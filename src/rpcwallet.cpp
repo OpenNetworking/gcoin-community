@@ -116,14 +116,10 @@ Value getnewaddress(const Array& params, bool fHelp)
 
     // Generate a new key that is added to wallet
     CPubKey newKey;
-    CReserveKey reservekey(pwalletMain);
-    if (!reservekey.GetReservedKey(newKey))
-        throw JSONRPCError(RPC_WALLET_KEYPOOL_RAN_OUT, "Error: Keypool ran out, please call keypoolrefill first");
-
-    /*
+    
     if (!pwalletMain->GetKeyFromPool(newKey))
         throw JSONRPCError(RPC_WALLET_KEYPOOL_RAN_OUT, "Error: Keypool ran out, please call keypoolrefill first");
-    */
+
     CKeyID keyID = newKey.GetID();
 
     pwalletMain->SetAddressBook(keyID, strAccount, "receive");
@@ -733,7 +729,6 @@ Value getlicenseinfo(const Array& params, bool fHelp)
             "{\n"
             "   \"color\": {\n"
             "           \"address\" :   (str)   Address possessing the color license. \n"
-            "           \"amount\"  :   (float) Amount of the license.\n"
             "   }\n"
             "   ...\n"
             "}\n"
@@ -751,7 +746,6 @@ Value getlicenseinfo(const Array& params, bool fHelp)
     for (map<type_Color, pair<string, int64_t> >::iterator it = color_amount.begin(); it != color_amount.end(); it++) {
         Object obj;
         obj.push_back(Pair("address", (*it).second.first));
-        obj.push_back(Pair("amount", ValueFromAmount((*it).second.second)));
         snprintf(r1, 20, "%" PRIu32, (*it).first);
         ret.push_back(Pair(r1, obj));
     }
