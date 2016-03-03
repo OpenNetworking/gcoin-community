@@ -127,6 +127,27 @@ Value getnewaddress(const Array& params, bool fHelp)
     return CBitcoinAddress(keyID).ToString();
 }
 
+#ifdef ENABLE_GCOIN
+Value getfixedaddress(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() > 1)
+        throw runtime_error(
+	    _(__func__) + "( \"account\" )\n"
+	    "\nReturns a idenitity address for receiving payments.\n"
+	    "\nArguments:\n"
+	    "\nResult:\n"
+	    "\"bitcoinaddress\"    (string) The idenitity address\n"
+	    "\nExamples:\n"
+	    + HelpExampleCli("getfixedaddress", "")
+	    + HelpExampleCli("getfixedaddress", "\"\"")
+	);
+
+    CKeyID keyID = pwalletMain->vchDefaultKey.GetID();
+
+    return CBitcoinAddress(keyID).ToString();
+}
+#endif
+
 
 CBitcoinAddress GetAccountAddress(string strAccount, bool bForceNew=false)
 {
