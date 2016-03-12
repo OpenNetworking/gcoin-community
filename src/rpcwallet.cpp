@@ -2403,6 +2403,7 @@ Value getwalletinfo(const Array& params, bool fHelp)
     return obj;
 }
 
+#ifdef ENABLE_GCOIN
 Value mint(const Array& params, bool fHelp)
 {
     if (fHelp || params.size() < 2 || params.size() > 3)
@@ -2430,4 +2431,4 @@ Value mint(const Array& params, bool fHelp)
         throw JSONRPCError(RPC_WALLET_ERROR, strError);
     return wtx.GetHash().GetHex();
 }
-
+#endif
