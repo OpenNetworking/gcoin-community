@@ -1,7 +1,7 @@
 Gcoin Core integration/staging tree
 =====================================
 
-http://gcoin.com.tw
+http://g-coin.org
 
 Copyright (c) 2014-2016 GCOIN Foundation
 
@@ -57,7 +57,7 @@ Translations
 ------------
 
 Changes to translations as well as new translations can be submitted to
-zhouer@gmail.com
+support@g-coin.org
 
 Development tips and tricks
 ---------------------------
@@ -93,3 +93,9 @@ Gcoin Core is a multithreaded application, and deadlocks or other multithreading
 can be very difficult to track down. Compiling with -DDEBUG_LOCKORDER (configure
 CXXFLAGS="-DDEBUG_LOCKORDER -g") inserts run-time checks to keep track of what locks
 are held, and adds warning to the debug.log file if inconsistencies are detected.
+
+Help Forums
+---------------------------
+Post questions and get advice from other people using GCOIN.
+
+https://groups.google.com/forum/#!forum/gcoins
