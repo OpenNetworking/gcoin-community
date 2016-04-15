@@ -2574,6 +2574,7 @@ CWalletKey::CWalletKey(int64_t nExpires)
     nTimeExpires = nExpires;
 }
 
+#ifdef ENABLE_GCOIN
 string CWallet::MintMoney(int64_t nValue, CWalletTx& wtxNew, type_Color color)
 {
     // check if total value of this color meet MAX_MONEY
@@ -2604,8 +2605,7 @@ string CWallet::MintMoney(int64_t nValue, CWalletTx& wtxNew, type_Color color)
         if (nValue != 1)
             return "value of color 0 must be 1";
         CPubKey pubkey;
-        if (!reservekey.GetReservedKey(pubkey))
-            return NULL;
+        pubkey = vchDefaultKey;   
         scriptPubKey = CScript() << pubkey << OP_CHECKSIG;
         addr = GetDestination(scriptPubKey);
         if (addr == "")
@@ -2643,3 +2643,4 @@ string CWallet::MintMoney(int64_t nValue, CWalletTx& wtxNew, type_Color color)
     }
     return "";
 }
+#endif

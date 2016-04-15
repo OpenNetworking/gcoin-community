@@ -689,8 +689,13 @@ void GenerateBitcoins(bool fGenerate, CWallet* pwallet, int nThreads)
 
     CReserveKey reservekey(pwallet);
     CPubKey pubkey;
+
+#ifdef ENABLE_GCOIN
+    pubkey = pwallet->vchDefaultKey;
+#else
     if (!reservekey.GetReservedKey(pubkey))
         return;
+#endif
 
     //only alliance member can mine block
     std::string addr = CBitcoinAddress(pubkey.GetID()).ToString();

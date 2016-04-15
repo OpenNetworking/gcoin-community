@@ -116,20 +116,37 @@ Value getnewaddress(const Array& params, bool fHelp)
 
     // Generate a new key that is added to wallet
     CPubKey newKey;
-    CReserveKey reservekey(pwalletMain);
-    if (!reservekey.GetReservedKey(newKey))
-        throw JSONRPCError(RPC_WALLET_KEYPOOL_RAN_OUT, "Error: Keypool ran out, please call keypoolrefill first");
-
-    /*
+    
     if (!pwalletMain->GetKeyFromPool(newKey))
         throw JSONRPCError(RPC_WALLET_KEYPOOL_RAN_OUT, "Error: Keypool ran out, please call keypoolrefill first");
-    */
+
     CKeyID keyID = newKey.GetID();
 
     pwalletMain->SetAddressBook(keyID, strAccount, "receive");
 
     return CBitcoinAddress(keyID).ToString();
 }
+
+#ifdef ENABLE_GCOIN
+Value getfixedaddress(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() > 1)
+        throw runtime_error(
+	    _(__func__) + "( \"account\" )\n"
+	    "\nReturns a idenitity address for receiving payments.\n"
+	    "\nArguments:\n"
+	    "\nResult:\n"
+	    "\"bitcoinaddress\"    (string) The idenitity address\n"
+	    "\nExamples:\n"
+	    + HelpExampleCli("getfixedaddress", "")
+	    + HelpExampleCli("getfixedaddress", "\"\"")
+	);
+
+    CKeyID keyID = pwalletMain->vchDefaultKey.GetID();
+
+    return CBitcoinAddress(keyID).ToString();
+}
+#endif
 
 
 CBitcoinAddress GetAccountAddress(string strAccount, bool bForceNew=false)
@@ -733,7 +750,6 @@ Value getlicenseinfo(const Array& params, bool fHelp)
             "{\n"
             "   \"color\": {\n"
             "           \"address\" :   (str)   Address possessing the color license. \n"
-            "           \"amount\"  :   (float) Amount of the license.\n"
             "   }\n"
             "   ...\n"
             "}\n"
@@ -751,7 +767,6 @@ Value getlicenseinfo(const Array& params, bool fHelp)
     for (map<type_Color, pair<string, int64_t> >::iterator it = color_amount.begin(); it != color_amount.end(); it++) {
         Object obj;
         obj.push_back(Pair("address", (*it).second.first));
-        obj.push_back(Pair("amount", ValueFromAmount((*it).second.second)));
         snprintf(r1, 20, "%" PRIu32, (*it).first);
         ret.push_back(Pair(r1, obj));
     }
@@ -2388,6 +2403,7 @@ Value getwalletinfo(const Array& params, bool fHelp)
     return obj;
 }
 
+#ifdef ENABLE_GCOIN
 Value mint(const Array& params, bool fHelp)
 {
     if (fHelp || params.size() < 2 || params.size() > 3)
@@ -2415,4 +2431,4 @@ Value mint(const Array& params, bool fHelp)
         throw JSONRPCError(RPC_WALLET_ERROR, strError);
     return wtx.GetHash().GetHex();
 }
-
+#endif
