@@ -110,7 +110,10 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&
 
     // Adjust the difficulty with the amount of repeated miner.
     bnTarget.SetCompact(nBits, &fNegative, &fOverflow);
-    bnTarget /= std::pow(Params().DynamicDiff(), nSameMiner);
+
+    // Adjust the difficulty for each node should not be used when the Alliance member  is below 10.
+    if (palliance->NumOfMembers() > 10)
+        bnTarget /= std::pow(Params().DynamicDiff(), nSameMiner);
 
     // Check range
     if (fNegative || bnTarget == 0 || fOverflow || bnTarget > UintToArith256(params.powLimit))
