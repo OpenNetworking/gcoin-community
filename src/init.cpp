@@ -1119,10 +1119,6 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             uiInterface.InitMessage(_("Error loading license.dat: Backup corrupted"));
             return false;
         }
-        if (!pminer->ReadDisk()) {
-            uiInterface.InitMessage(_("Error loading miner.dat: Backup corrupted"));
-            return false;
-        }
         if (!pactivate->ReadDisk()) {
             uiInterface.InitMessage(_("Error loading activate.dat: Backup corrupted"));
             return false;

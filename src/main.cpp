@@ -2735,8 +2735,6 @@ bool WriteCacheToDisk(const int nHeight)
         return error("%s() : alliance_member cache writing fail", __func__);
     if(!plicense->WriteDisk(nHeight))
         return error("%s() : color_license cache writing fail", __func__);
-    if(!pminer->WriteDisk(nHeight))
-        return error("%s() : block_miner cache writing fail", __func__);
     if(!pactivate->WriteDisk(nHeight))
         return error("%s() : activate_address_with_color cache writing fail", __func__);
     if(!porder->WriteDisk(nHeight))
@@ -5186,7 +5184,6 @@ bool CVerifyDB::VerifyDB(CCoinsView *coinsview, int nCheckLevel, int nCheckDepth
     set<int> lheight;
     lheight.insert(palliance->BackupHeight());
     lheight.insert(plicense->BackupHeight());
-    lheight.insert(pminer->BackupHeight());
     lheight.insert(pactivate->BackupHeight());
     lheight.insert(porder->BackupHeight());
     int backupHeight = *lheight.begin();

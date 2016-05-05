@@ -463,12 +463,10 @@ class BlockMiner : public CacheInterface<Tc_t, Te_t>
 public:
     BlockMiner()
     {
-        filename_ = "miner.dat";
     }
 
     ~BlockMiner()
     {
-        filename_ = "";
     }
 
     bool Add(const Te_t &e);
