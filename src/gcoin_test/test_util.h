@@ -212,8 +212,8 @@ struct WalletSetupFixture
 
     ~WalletSetupFixture()
     {
-        delete pwalletTest;
         pwalletMain = pwalletOld;
+        delete pwalletTest;
     }
 
     mapValue_t expected_map_values;

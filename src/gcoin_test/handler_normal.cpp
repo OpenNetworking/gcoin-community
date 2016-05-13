@@ -44,8 +44,8 @@ struct NormalHandlerCheckValidFixture : public NormalHandlerFixture
         pinfo->fMemberControl = true;
         plicense->SetOwner(color, CreateAddress(), pinfo);
 
-        member = CreateAddress();
-        receiver = CreateAddress();
+        member = "1W9mPSzwodSBPmHLJ8QFRjLNcjtReVzBv";
+        receiver = "17sMFd4btP1G5uVx3t3wvq8hiSbPE1Nd9K";
         pactivate->Activate(color, receiver);
         CreateTransaction(in_hash, MINT);
         CreateTransaction(member_hash, NORMAL);
