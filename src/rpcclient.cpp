@@ -87,6 +87,8 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "sendmany", 2 },
     { "sendmany", 3 },
     { "sendmany", 4 },
+    { "activate", 0 },
+    { "activate", 1 },
     { "mint", 0 },
     { "mint", 1 },
     { "sendorder", 0 },

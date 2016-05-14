@@ -52,6 +52,8 @@ bool ColorLicense::IsColorExist(const type_Color &color) const
 {
     if (color == DEFAULT_ADMIN_COLOR)
         return true;
+    else if (color == DEFAULT_FEE_COLOR)
+        return true;
     return (pcontainer_->find(color) != pcontainer_->end());
 }
 

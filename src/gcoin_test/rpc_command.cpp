@@ -45,6 +45,18 @@ struct RPCTestFixture : public GlobalSetupFixture, public CacheSetupFixture
 
 BOOST_AUTO_TEST_SUITE(test_rpc_command)
 
+BOOST_FIXTURE_TEST_CASE(rpc_activate_test, RPCTestWalletFixture)
+{
+    BOOST_CHECK(pwalletTest != NULL);
+    string strRPC = "activate [\"13wjNR5waStdfb5zeyEhbncHF6BFDRrEVF\",\"15SW5PL6z9NPLmU6n4gr4nfHiJA5rbqDzU\"] 3758096384";
+    pwalletTest->setColor(3758096384);
+    pwalletTest->setType(ACTIVATE);
+    BOOST_CHECK_THROW(CallRPC(strRPC), runtime_error);
+
+    pwalletTest->setColorAmount(100 * COIN);
+    BOOST_CHECK_NO_THROW(CallRPC(strRPC));
+}
+
 BOOST_FIXTURE_TEST_CASE(rpc_getfixedaddress_test, RPCTestWalletFixture)
 {
     BOOST_CHECK(pwalletMain != NULL);
@@ -174,7 +186,7 @@ BOOST_FIXTURE_TEST_CASE(rpc_sendlicensetoaddress_test, RPCTestWalletFixture)
     LOCK2(cs_main, pwalletTest->cs_wallet);
     CTxDestination address = CreateDestination();
     string err_msg = "some error";
-    type_Color color = 5;
+    type_Color color = 0xFFFFFFFE;
     pwalletTest->setAddress(address);
     pwalletTest->setColor(color);
     pwalletTest->setType(LICENSE);
@@ -182,12 +194,12 @@ BOOST_FIXTURE_TEST_CASE(rpc_sendlicensetoaddress_test, RPCTestWalletFixture)
     pwalletTest->setColorAdmin(COIN);
     pwalletTest->setLicense(COIN);
     string strRPC;
-    strRPC = "sendlicensetoaddress " + CreateAddress() + " 5 72110100206162636465666768696a6b6c6d6e6f707172737475767778797a414243444546286162636465666768696a6b6c6d6e6f707172737475767778797a4142434445464748494a4b4c4d4e206162636465666768696a6b6c6d6e6f707172737475767778797a41424344454601000000000000000000000000223150364b4351733474594363583971376b414b6b63655a456d61786a6a7271774e38640000000000000000000000011568747470733a2f2f676f6f2e676c2f4e725035694fd032fdcdebbfe5e267e933e364e49f7f012e6a01c6203f9a246d8c330cd4a477";
+    strRPC = "sendlicensetoaddress " + CreateAddress() + " 4294967294 72110100206162636465666768696a6b6c6d6e6f707172737475767778797a414243444546286162636465666768696a6b6c6d6e6f707172737475767778797a4142434445464748494a4b4c4d4e206162636465666768696a6b6c6d6e6f707172737475767778797a41424344454601000000000000000000000000223150364b4351733474594363583971376b414b6b63655a456d61786a6a7271774e38640000000000000000000000011568747470733a2f2f676f6f2e676c2f4e725035694fd032fdcdebbfe5e267e933e364e49f7f012e6a01c6203f9a246d8c330cd4a477";
     BOOST_CHECK_NO_THROW(CallRPC(strRPC));
     CLicenseInfo *pinfo = new CLicenseInfo();
     BOOST_CHECK(plicense->SetOwner(color, "someone", pinfo));
     BOOST_CHECK_THROW(CallRPC(strRPC), runtime_error);
-    strRPC = "sendlicensetoaddress " + CreateAddress() + " 5";
+    strRPC = "sendlicensetoaddress " + CreateAddress() + " 4294967294";
     pwalletTest->setMisc("");
     BOOST_CHECK_NO_THROW(CallRPC(strRPC));
     plicense->RemoveColor(color);
@@ -227,8 +239,8 @@ BOOST_FIXTURE_TEST_CASE(rpc_getassetinfo_test, RPCTestFixture)
 {
     CLicenseInfo info;
     info.DecodeInfo("72110100206162636465666768696a6b6c6d6e6f707172737475767778797a414243444546286162636465666768696a6b6c6d6e6f707172737475767778797a4142434445464748494a4b4c4d4e206162636465666768696a6b6c6d6e6f707172737475767778797a41424344454601000000000000000000000000223150364b4351733474594363583971376b414b6b63655a456d61786a6a7271774e38640000000000000000000000011568747470733a2f2f676f6f2e676c2f4e725035694fd032fdcdebbfe5e267e933e364e49f7f012e6a01c6203f9a246d8c330cd4a477");
-    BOOST_CHECK(plicense->SetOwner(10, "1P6KCQs4tYCcX9q7kAKkceZEmaxjjrqwN8", &info));
-    string strRPC = "getassetinfo 10";
+    BOOST_CHECK(plicense->SetOwner(0xFFFFFFFE, "1P6KCQs4tYCcX9q7kAKkceZEmaxjjrqwN8", &info));
+    string strRPC = "getassetinfo 4294967294";
     Object o;
     BOOST_CHECK_NO_THROW(o = CallRPC(strRPC).get_obj());
     BOOST_CHECK_EQUAL(find_value(o, "version").get_int(), 1);

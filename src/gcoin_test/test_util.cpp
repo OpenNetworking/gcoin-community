@@ -123,7 +123,8 @@ Value CallRPC(string args)
         Value result = (*method)(params, false);
         return result;
     } catch (Object& objError) {
-        throw runtime_error(find_value(objError, "message").get_str());
+        string strErr = find_value(objError, "message").get_str();
+        throw runtime_error(strErr);
     }
 }
 

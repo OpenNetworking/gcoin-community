@@ -21,6 +21,7 @@ if ENABLE_WALLET
   GCOIN_TEST_SRCS += \
     gcoin_test/handler_normal.cpp \
     gcoin_test/handler_license.cpp \
+    gcoin_test/handler_activate.cpp \
     gcoin_test/cache_activate.cpp \
     gcoin_test/cache_color_license.cpp \
     gcoin_test/rpc_command.cpp

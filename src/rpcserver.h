@@ -247,6 +247,7 @@ extern json_spirit::Value listonewalletaddress(const json_spirit::Array& params,
 extern json_spirit::Value sendlicensetoaddress(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value sendvotetoaddress(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value sendbanvotetoaddress(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value activate(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value mint(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value mintadmin(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value getlicenseinfo(const json_spirit::Array& params, bool fHelp); // added in 2014/10/09

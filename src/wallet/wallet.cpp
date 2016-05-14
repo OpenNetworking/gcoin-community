@@ -1406,7 +1406,7 @@ void CWallet::ResendWalletTransactions(int64_t nBestBlockTime)
  */
 
 
-CAmount CWallet::GetColor0Balance() const
+CAmount CWallet::GetColorAdminBalance() const
 {
     CAmount nTotal = 0;
     {
@@ -1423,7 +1423,7 @@ CAmount CWallet::GetColor0Balance() const
 
 CAmount CWallet::GetVoteBalance() const
 {
-    return GetColor0Balance();
+    return GetColorAdminBalance();
 }
 
 bool CWallet::GetLicensePubKey(const type_Color& color, CScript& scriptPubKey) const
@@ -1697,12 +1697,25 @@ void CWallet::AvailableCoinsForType(vector<COutput>& vCoins, const type_Color& s
                 // we allow two type of license transaction
                 // (1) Issuer send licence to others
                 if (pcoin->type == LICENSE && pcoin->vout[0].color == send_color)
-                   fMintLicense = false;
+                    fMintLicense = false;
                 // (2) AE mint new license
-                else if (pcoin->type == MINT && pcoin->vout[0].color == DEFAULT_ADMIN_COLOR && !plicense->HasColorOwner(send_color))
-                   fMintLicense = true;
+                else if (pcoin->type == MINT && !plicense->HasColorOwner(send_color)) {
+                    if (send_color == GetMainColor(send_color) && pcoin->vout[0].color == DEFAULT_ADMIN_COLOR)
+                        fMintLicense = true;
+                    else if (send_color != GetMainColor(send_color) && pcoin->vout[0].color == GetMainColor(send_color))
+                        fMintLicense = true;
+                    else
+                        continue;
+                }
                 else
                    continue;
+            } else if (type == ACTIVATE) {
+                if (pcoin->GetBlocksToMaturity(pcoin->type) > 0)
+                    continue;
+                if (!(pcoin->type == MINT || pcoin->type == ACTIVATE))
+                    continue;
+                if (pcoin->vout[0].color != send_color)
+                    continue;
             } else if (!(pcoin->type == MINT && pcoin->vout[0].color == DEFAULT_ADMIN_COLOR))
                 continue;
 
@@ -1712,11 +1725,17 @@ void CWallet::AvailableCoinsForType(vector<COutput>& vCoins, const type_Color& s
 
             for (unsigned int i = 0; i < pcoin->vout.size(); i++) {
                 isminetype mine = IsMine(pcoin->vout[i]);
-                if (!(IsSpent(wtxid, i)) && mine != ISMINE_NO && !IsLockedCoin((*it).first, i) && (pcoin->vout[i].nValue == COIN || fIncludeZeroValue)) {
+                if (!(IsSpent(wtxid, i)) && mine != ISMINE_NO && !IsLockedCoin((*it).first, i)) {
                     string addr = GetTxOutputAddr(*pcoin, i);
                     if (type == LICENSE) {
+                        if (pcoin->vout[i].nValue != COIN)
+                            continue;
                         if (fMintLicense && palliance->IsMember(addr)) {
                                 // no send_color license owner, AE create new license.
+                                vCoins.push_back(COutput(pcoin, i, nDepth, (mine & ISMINE_SPENDABLE) != ISMINE_NO));
+                                return;
+                        } else if (fMintLicense && plicense->IsColorOwner(GetMainColor(send_color), addr)) {
+                                // no send_color license owner, main color owner create new license.
                                 vCoins.push_back(COutput(pcoin, i, nDepth, (mine & ISMINE_SPENDABLE) != ISMINE_NO));
                                 return;
                         } else if (plicense->IsColorOwner(send_color, addr)) {
@@ -1724,7 +1743,15 @@ void CWallet::AvailableCoinsForType(vector<COutput>& vCoins, const type_Color& s
                                 vCoins.push_back(COutput(pcoin, i, nDepth, (mine & ISMINE_SPENDABLE) != ISMINE_NO));
                                 return;
                         }
+                    } else if (type == ACTIVATE) {
+                        if (plicense->IsColorOwner(send_color, addr)) {
+                            // send activate transaction of a main color
+                            vCoins.push_back(COutput(pcoin, i, nDepth, (mine & ISMINE_SPENDABLE) != ISMINE_NO));
+                            return;
+                        }
                     } else if (palliance->IsMember(addr)) {// input of special type tx must be alliance(Except license transfer)
+                        if (pcoin->vout[i].nValue != COIN)
+                            continue;
                         vCoins.push_back(COutput(pcoin, i, nDepth, (mine & ISMINE_SPENDABLE) != ISMINE_NO));
                         return;
                     }
@@ -2048,8 +2075,33 @@ bool CWallet::CreateTypeTransaction(const std::vector<CRecipient>& vecSend, cons
                 int64_t nChange = nValueIn - nValue;
 
                 if (nChange > 0) {
-                    strFailReason = "input and output value of type " + TxType[type] + " transaction must be equal";
-                    return false;
+                    // Fill a vout to ourself
+                    // TODO: pass in scriptChange instead of reservekey so
+                    // change transaction isn't always pay-to-bitcoin-address
+                    CScript scriptChange;
+
+                    // Note: We use a new key here to keep it from being obvious which side is the change.
+                    //  The drawback is that by not reusing a previous key, the change may be lost if a
+                    //  backup is restored, if the backup doesn't have the new private key for the change.
+                    //  If we reused the old key, it would be possible to add code to look for and
+                    //  rediscover unknown transactions that were written with keys of ours to recover
+                    //  post-backup change.
+
+
+                    const PAIRTYPE(const CWalletTx*, unsigned int)& it = *(setCoins.begin());
+                    if (it == *(setCoins.end()))
+                        return false;
+                    scriptChange = it.first->vout[it.second].scriptPubKey;
+
+                    CTxOut newTxOut(nChange, scriptChange, send_color);
+                    // Never create dust outputs; if we would, just
+                    // add the dust to the fee.
+                    if (newTxOut.IsDust(::minRelayTxFee)) {
+                        strFailReason = _("Dust Change");
+                        return false;
+                    } else {
+                        txNew.vout.push_back(newTxOut);
+                    }
                 }
 
                 // Fill vin
@@ -2087,7 +2139,7 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, const type_Co
     unsigned int nSubtractFeeFromAmount = 0;
 
     if (send_color == DEFAULT_ADMIN_COLOR) {
-        strFailReason = _("Color must not be zero");
+        strFailReason = _("Color must not be admin color");
         return false;
     }
     BOOST_FOREACH (const CRecipient& recipient, vecSend) {
@@ -3419,7 +3471,7 @@ string CWallet::MintMoney(const CAmount& nValue, const type_Color& color, CWalle
         LogPrintf("%s: Mint Value > MaxCoin", __func__);
         return "mint Value > MaxCoin";
     }
-    if (color != DEFAULT_ADMIN_COLOR) {
+    if (IsValidColor(color)) {
         if (!plicense->IsColorExist(color)) {
             LogPrintf("%s: License of this color(%u) hasn't been generated yet", __func__, color);
             return "license of this color hasn't been generated yet";
@@ -3466,7 +3518,20 @@ string CWallet::MintMoney(const CAmount& nValue, const type_Color& color, CWalle
         txNew.vout.resize(1);
         txNew.vout[0].scriptPubKey = scriptPubKey;
         txNew.vout[0].nValue = nValue * COIN;
-        txNew.vout[0].color = 0;
+        txNew.vout[0].color = DEFAULT_ADMIN_COLOR;
+    } else if (color == DEFAULT_FEE_COLOR) {
+        CPubKey pubkey;
+        pubkey = vchDefaultKey;
+        scriptPubKey = CScript() << ToByteVector(pubkey) << OP_CHECKSIG;
+        addr = GetDestination(scriptPubKey);
+        if (addr == "")
+            return "GetDestination error";
+        else if (!palliance->IsMember(addr))
+            return "you are not AE";
+        txNew.vout.resize(1);
+        txNew.vout[0].scriptPubKey = scriptPubKey;
+        txNew.vout[0].nValue = nValue * COIN;
+        txNew.vout[0].color = DEFAULT_FEE_COLOR;
     } else if (!GetLicensePubKey(color, scriptPubKey)) {
         return "you don't have this license";
     } else {

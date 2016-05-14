@@ -636,14 +636,14 @@ public:
     void ResendWalletTransactions(int64_t nBestBlockTime);
     std::vector<uint256> ResendWalletTransactionsBefore(int64_t nTime);
 
-    virtual CAmount GetColor0Balance() const;
+    virtual CAmount GetColorAdminBalance() const;
     virtual CAmount GetVoteBalance() const;
     bool    GetLicensePubKey(const type_Color& color, CScript& scriptPubKey) const;
     virtual CAmount GetSendLicenseBalance(const type_Color& color) const;
     void    GetBalance(std::map<type_Color, CAmount>& color_amount) const;
     void    GetAddressBalance(const std::string& strAddress, std::map<type_Color, CAmount>& color_amount, int nMinDepth) const;
     CAmount GetColorBalanceFromFixedAddress(const std::string& strFromAddress, const type_Color& color) const;
-    CAmount GetColorBalance(const type_Color& color) const;
+    virtual CAmount GetColorBalance(const type_Color& color) const;
     void    GetUnconfirmedBalance(std::map<type_Color, CAmount>& color_amount) const;
     CAmount GetUnconfirmedColorBalance(const type_Color& color) const;
     CAmount GetImmatureBalance(const type_Color& color) const;

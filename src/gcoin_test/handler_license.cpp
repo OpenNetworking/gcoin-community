@@ -39,7 +39,7 @@ struct CreateLicenseHandlerCheckValidFixture : public LicenseHandlerFixture
         license_hash = ArithToUint256(arith_uint256(2));
         out_hash = ArithToUint256(arith_uint256(3));
 
-        color = 5;
+        color = 0xFFFFFFFE;
 
         member = CreateAddress();
         issuer = CreateAddress();
@@ -115,7 +115,7 @@ struct TransferLicenseHandlerCheckValidFixture : public LicenseHandlerFixture
         transfer_hash = ArithToUint256(arith_uint256(2));
         out_hash = ArithToUint256(arith_uint256(3));
 
-        color = 5;
+        color = 0xFFFFFFFE;
 
         issuer = CreateAddress();
         user = CreateAddress();

@@ -155,6 +155,11 @@ public:
         return_string_ = return_string;
     }
 
+    inline void setColorAmount(int64_t color_amount)
+    {
+        color_amount_ = color_amount;
+    }
+
     inline void setColorAdmin(int64_t color_admin_amount)
     {
         color_admin_amount_ = color_admin_amount;
@@ -167,7 +172,12 @@ public:
 
     DBErrors LoadWallet(bool& fFirstRunRet);
 
-    int64_t GetColor0Balance() const
+    int64_t GetColorBalance(const type_Color &color) const
+    {
+        return color_amount_;
+    }
+
+    int64_t GetColorAdminBalance() const
     {
         return color_admin_amount_;
     }
@@ -197,7 +207,7 @@ private:
     std::string misc_;
     mapValue_t expected_map_values_;
     std::string return_string_;
-    int64_t color_admin_amount_, license_amount_;
+    int64_t color_admin_amount_, license_amount_, color_amount_;
     bool map_values_equal_;
 };
 

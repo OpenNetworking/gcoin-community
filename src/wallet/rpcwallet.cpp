@@ -481,7 +481,7 @@ static void CreateLicense(const CTxDestination &address, const type_Color color,
     if (plicense->IsColorExist(color))
         throw JSONRPCError(RPC_WALLET_ERROR, "License is already created. Please remove the license info if you are about to transfer your license.");
 
-    CAmount curBalance = pwalletMain->GetColor0Balance();
+    CAmount curBalance = pwalletMain->GetColorAdminBalance();
     if (SEND_TYPE_AMOUNT > curBalance)
         throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Insufficient license funds");
 
@@ -562,8 +562,10 @@ static void SendMoneyFromFixedAddress(const string& strFromAddress, const CTxDes
     // Check amount
     if (nValue <= 0)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid amount");
-    if (!IsValidColor(color))
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid color");
+    if (!IsValidColor(color)) {
+        if (color == DEFAULT_ADMIN_COLOR)
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Admin color cannot be transferred");
+    }
 
     if (nValue > curBalance)
         throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Insufficient funds from this address");
@@ -1618,6 +1620,79 @@ Value movecmd(const Array& params, bool fHelp)
     return true;
 }
 
+Value activate(const Array& params, bool fHelp)
+{
+    if (!EnsureWalletIsAvailable(fHelp))
+        return Value::null;
+
+    if (fHelp || params.size() > 2)
+        throw runtime_error(
+            "sendmany \"fromaccount\" {\"address\":amount,...} color ( minconf \"comment\" [\"address\",...] )\n"
+            "\nSend multiple times. Amounts are double-precision floating point numbers."
+            + HelpRequiringPassphrase() + "\n"
+            "\nArguments:\n"
+            "1. \"addresses\"           (string, required) A json object with addresses\n"
+            "    {\n"
+            "      \"address\"          (string, required) The activating address\n"
+            "      ,...\n"
+            "    }\n"
+            "2. color                   (numeric, required) The currency type (color) to be activated.\n"
+            "\nResult:\n"
+            "\"transactionid\"          (string) The transaction id for the send. Only 1 transaction is created regardless of \n"
+            "                                    the number of addresses.\n"
+            "\nExamples:\n"
+            "\nActivate two address for color 3758096384:\n"
+            + HelpExampleCli("activate", "\"[\\\"16sSauSf5pF2UkUwvKGq4qjNRzBZYqgEL5\\\",\\\"171sgjn4YtPu27adkKGrdDwzRTxnRkBfKV\\\"]\" 3758096384") +
+            "\nAs a json rpc call\n"
+            + HelpExampleRpc("activate", "\"[\\\"16sSauSf5pF2UkUwvKGq4qjNRzBZYqgEL5\\\",\\\"171sgjn4YtPu27adkKGrdDwzRTxnRkBfKV\\\"]\", 3758096384")
+        );
+
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+
+    Array toActivate = params[0].get_array();
+
+    const type_Color color = ColorFromValue(params[1]);
+
+    CWalletTx wtxMint, wtxActivate;
+
+    set<CBitcoinAddress> setAddress;
+    vector<CRecipient> vecSend;
+
+    CAmount totalAmount = 0;
+    BOOST_FOREACH(const Value& vaddr, toActivate) {
+        string saddr = vaddr.get_str();
+        CBitcoinAddress address(saddr);
+        if (!address.IsValid())
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, string("Invalid Bitcoin address: ")+saddr);
+
+        if (setAddress.count(address))
+            throw JSONRPCError(RPC_INVALID_PARAMETER, string("Invalid parameter, duplicated address: ")+saddr);
+        setAddress.insert(address);
+
+        CScript scriptPubKey = GetScriptForDestination(address.Get());
+        totalAmount += COIN;
+
+        CRecipient recipient = {scriptPubKey, COIN, false};
+        vecSend.push_back(recipient);
+    }
+
+    EnsureWalletIsUnlocked();
+
+    // Check funds
+    CAmount nBalance = pwalletMain->GetColorBalance(color);
+    if (totalAmount > nBalance)
+        throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Account has insufficient funds");
+
+    // Send
+    CReserveKey keyChange(pwalletMain);
+    string strFailReason;
+    if (!pwalletMain->CreateTypeTransaction(vecSend, color, ACTIVATE, wtxActivate, strFailReason))
+        throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, strFailReason);
+    if (!pwalletMain->CommitTransaction(wtxActivate, keyChange))
+        throw JSONRPCError(RPC_WALLET_ERROR, "Error: The activate transaction was rejected! Please read debug.info.");
+
+    return wtxActivate.GetHash().GetHex();
+}
 
 Value sendfrom(const Array& params, bool fHelp)
 {
