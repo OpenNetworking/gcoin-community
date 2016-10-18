@@ -114,6 +114,7 @@ public:
         // 7 * 24 * 60 * 60 / (5 * 60) = 2520 blocks
         nDynamicDiff = 2.0;   // The difficulty adjust parameter
         nAllianceThreshold = 0.66; 
+        nLicenseThreshold = 0.5;
         nDynamicMiner = 5;  // Number of miners in a row to be considered
 
         const char* pszTimestamp = "OpenNet GCoin Project 2014.9 GCoin";

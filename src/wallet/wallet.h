@@ -653,7 +653,7 @@ public:
     CAmount GetImmatureWatchOnlyBalance(const type_Color& color) const;
 
     virtual bool CreateTypeTransaction(const std::vector<CRecipient>& vecSend, const type_Color& send_color, int type, CWalletTx& wtxNew,
-                                       std::string& strFailReason, const std::string& misc = "");
+                                       std::string& strFailReason, bool &fComplete, const std::string& misc = "");
     bool CreateTransaction(const std::vector<CRecipient>& vecSend, const type_Color& send_color, CWalletTx& wtxNew,
                             CReserveKey& reservekey, CAmount& nFeeRet, int& nChangePosRet, std::string& strFailReason, const CCoinControl *coinControl = NULL, const std::string& strFromAddress = "", const std::string& feeFromAddress = "");
 
@@ -782,7 +782,7 @@ public:
     void SetBroadcastTransactions(bool broadcast) { fBroadcastTransactions = broadcast; }
 
     bool SignSignatureWallet(const CScript& fromPubKey, CMutableTransaction& txTo, unsigned int nIn);
-    std::string MintMoney(const CAmount& nValue, const type_Color& color, CWalletTx& wtxNew);
+    std::string MintMoney(const CAmount& nValue, const type_Color& color, CWalletTx& wtxNew, const tx_type mint_purpose = NORMAL);
 
     //!adds a hd chain of keys to the wallet
     bool HDAddHDChain(const std::string& chainPath, bool generateMaster, CKeyingMaterial& vSeed, HDChainID& chainId, std::string &strBase58ExtPrivKey, std::string &strBase58ExtPubKey, bool overwrite = false);

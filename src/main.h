@@ -504,13 +504,6 @@ bool IsFinalTx(const CTransaction &tx, int nBlockHeight, int64_t nBlockTime);
  */
 bool CheckFinalTx(const CTransaction &tx);
 
-
-/**
- * VOTE tmp list
- */
-extern std::map<std::string, std::vector<std::map<std::string, bool> > > VoteList;
-extern std::map<std::string, std::vector<std::map<std::string, bool> > > BanVoteList;
-
 bool CheckTxFeeAndColor(const CTransaction tx, const CBlock *pblock, bool fCheckFee = true);
 
 bool IsValidColor(const type_Color &color);
@@ -697,5 +690,9 @@ public:
 
 
 extern Fee TxFee;
+
+extern std::string ConsensusAddressForLicense;
+extern std::string ConsensusAddressForVote;
+CScript _createmultisig_redeemScript(int nRequired, std::vector<std::string>& keys);
 
 #endif // BITCOIN_MAIN_H

@@ -218,6 +218,14 @@ CScript _createmultisig_redeemScript(const Array& params)
 {
     int nRequired = params[0].get_int();
     const Array& keys = params[1].get_array();
+    std::vector<std::string> keystr;
+    for (unsigned int i = 0; i < keys.size(); i++)
+        keystr.push_back(keys[i].get_str());
+    return _createmultisig_redeemScript(nRequired, keystr);
+}
+
+CScript _createmultisig_redeemScript(int nRequired, std::vector<std::string>& keys)
+{
 
     // Gather public keys
     if (nRequired < 1)
@@ -231,7 +239,7 @@ CScript _createmultisig_redeemScript(const Array& params)
     std::vector<CPubKey> pubkeys;
     pubkeys.resize(keys.size());
     for (unsigned int i = 0; i < keys.size(); i++) {
-        const std::string& ks = keys[i].get_str();
+        const std::string& ks = keys[i];
 #ifdef ENABLE_WALLET
         // Case 1: Gcoin address and we have full public key:
         CBitcoinAddress address(ks);

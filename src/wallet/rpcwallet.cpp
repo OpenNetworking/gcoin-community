@@ -511,14 +511,15 @@ static void SendLicense(const CTxDestination& address, const type_Color& color, 
     vector<CRecipient> vecSend;
     CRecipient recipient = {scriptPubKey, COIN, false};
     vecSend.push_back(recipient);
-    if (!pwalletMain->CreateTypeTransaction(vecSend, color, LICENSE, wtxNew, strError, "")) {
+    bool fComplete = true;
+    if (!pwalletMain->CreateTypeTransaction(vecSend, color, LICENSE, wtxNew, strError, fComplete)) {
         throw JSONRPCError(RPC_WALLET_ERROR, strError);
     }
     if (!pwalletMain->CommitTransaction(wtxNew, reservekey))
         throw JSONRPCError(RPC_WALLET_ERROR, "Error: The license transaction was rejected! Please read debug.info.");
 }
 
-static void CreateLicense(const CTxDestination &address, const type_Color color, const string &info, CWalletTx& wtxNew)
+static bool CreateLicense(const CTxDestination &address, const type_Color color, const string &info, CWalletTx& wtxNew)
 {
     if (!IsValidColor(color))
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid color");
@@ -545,14 +546,20 @@ static void CreateLicense(const CTxDestination &address, const type_Color color,
     vector<CRecipient> vecSend;
     CRecipient recipient = {scriptPubKey, COIN, false};
     vecSend.push_back(recipient);
-    if (!pwalletMain->CreateTypeTransaction(vecSend, color, LICENSE, wtxNew, strError, info)) {
+    bool fComplete = true;
+    if (!pwalletMain->CreateTypeTransaction(vecSend, color, LICENSE, wtxNew, strError, fComplete, info)) {
         throw JSONRPCError(RPC_WALLET_ERROR, strError);
     }
-    if (!pwalletMain->CommitTransaction(wtxNew, reservekey))
-        throw JSONRPCError(RPC_WALLET_ERROR, "Error: The license transaction was rejected! Please read debug.info.");
+    if (fComplete) {
+        if (!pwalletMain->CommitTransaction(wtxNew, reservekey))
+            throw JSONRPCError(RPC_WALLET_ERROR, "Error: The license transaction was rejected! Please read debug.info.");
+        return true;
+    } else {
+        return false;
+    }
 }
 
-static void SendVote(const CTxDestination& address, CWalletTx& wtxNew)
+static bool SendVote(const CPubKey& pubkey, CWalletTx& wtxNew)
 {
     CAmount curBalance = pwalletMain->GetVoteBalance();
 
@@ -561,7 +568,7 @@ static void SendVote(const CTxDestination& address, CWalletTx& wtxNew)
         throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Insufficient vote funds");
 
     // Parse Gcoin address
-    CScript scriptPubKey = GetScriptForDestination(address);
+    CScript scriptPubKey = CScript() << ToByteVector(pubkey) << OP_CHECKSIG;;
 
     // Create and send the transaction
     CReserveKey reservekey(pwalletMain);
@@ -569,14 +576,21 @@ static void SendVote(const CTxDestination& address, CWalletTx& wtxNew)
     vector<CRecipient> vecSend;
     CRecipient recipient = {scriptPubKey, COIN, false};
     vecSend.push_back(recipient);
-    if (!pwalletMain->CreateTypeTransaction(vecSend, 0, VOTE, wtxNew, strError)) {
+    bool fComplete = true;
+    if (!pwalletMain->CreateTypeTransaction(vecSend, 0, VOTE, wtxNew, strError, fComplete)) {
         throw JSONRPCError(RPC_WALLET_ERROR, strError);
     }
-    if (!pwalletMain->CommitTransaction(wtxNew, reservekey))
-        throw JSONRPCError(RPC_WALLET_ERROR, "Error: The vote transaction was rejected! Please read debug.info.");
+    if (fComplete) {
+        if (!pwalletMain->CommitTransaction(wtxNew, reservekey))
+            throw JSONRPCError(RPC_WALLET_ERROR, "Error: The vote transaction was rejected! Please read debug.info.");
+        return true;
+    } else {
+        return false;
+    }
+
 }
 
-static void SendBanVote(const CTxDestination& address, CWalletTx& wtxNew)
+static bool SendBanVote(const CPubKey& pubkey, CWalletTx& wtxNew)
 {
     CAmount curBalance = pwalletMain->GetVoteBalance();
 
@@ -585,7 +599,7 @@ static void SendBanVote(const CTxDestination& address, CWalletTx& wtxNew)
         throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Insufficient ban-vote funds");
 
     // Parse Gcoin address
-    CScript scriptPubKey = GetScriptForDestination(address);
+    CScript scriptPubKey = CScript() << ToByteVector(pubkey) << OP_CHECKSIG;;
 
     // Create and send the transaction
     CReserveKey reservekey(pwalletMain);
@@ -593,11 +607,17 @@ static void SendBanVote(const CTxDestination& address, CWalletTx& wtxNew)
     vector<CRecipient> vecSend;
     CRecipient recipient = {scriptPubKey, COIN, false};
     vecSend.push_back(recipient);
-    if (!pwalletMain->CreateTypeTransaction(vecSend, 0, BANVOTE, wtxNew, strError)) {
+    bool fComplete = true;
+    if (!pwalletMain->CreateTypeTransaction(vecSend, 0, BANVOTE, wtxNew, strError, fComplete)) {
         throw JSONRPCError(RPC_WALLET_ERROR, strError);
     }
-    if (!pwalletMain->CommitTransaction(wtxNew, reservekey))
-        throw JSONRPCError(RPC_WALLET_ERROR, "Error: The ban-vote transaction was rejected! Please read debug.info.");
+    if (fComplete) {
+        if (!pwalletMain->CommitTransaction(wtxNew, reservekey))
+            throw JSONRPCError(RPC_WALLET_ERROR, "Error: The vote transaction was rejected! Please read debug.info.");
+        return true;
+    } else {
+        return false;
+    }
 }
 
 static void SendMoneyFromFixedAddress(const string& strFromAddress, const CTxDestination& address, CAmount nValue, const type_Color& color, bool fSubtractFeeFromAmount, CWalletTx& wtxNew, const string& feeFromAddress = "")
@@ -703,7 +723,13 @@ Value sendlicensetoaddress(const Array& params, bool fHelp)
 
     if (params.size() > 2 && params[2].type() != null_type) {
         info = params[2].get_str();
-        CreateLicense(address.Get(), color, info, wtx);
+        if (!CreateLicense(address.Get(), color, info, wtx)) {
+            //signature not complete
+            Object result;
+            result.push_back(Pair("hex", EncodeHexTx(wtx)));
+            result.push_back(Pair("complete", false));
+            return result;
+        }
     } else
         SendLicense(address.Get(), color, wtx);
 
@@ -857,9 +883,11 @@ Value sendvotetoaddress(const Array& params, bool fHelp)
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
-    CBitcoinAddress address(params[0].get_str());
-    if (!address.IsValid())
-        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Gcoin address");
+    std::string rawPubKey = params[0].get_str();
+    if (!IsHex(rawPubKey))
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Public Key Hex");
+
+    CPubKey pubkey = ParseHex(rawPubKey);
 
     // Wallet comments
     CWalletTx wtx;
@@ -870,7 +898,13 @@ Value sendvotetoaddress(const Array& params, bool fHelp)
 
     EnsureWalletIsUnlocked();
 
-    SendVote(address.Get(), wtx);
+    if (!SendVote(pubkey, wtx)) {
+        // signature not complete
+        Object result;
+        result.push_back(Pair("hex", EncodeHexTx(wtx)));
+        result.push_back(Pair("complete", false));
+        return result;
+    }
 
     return wtx.GetHash().GetHex();
 }
@@ -902,9 +936,11 @@ Value sendbanvotetoaddress(const Array& params, bool fHelp)
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
-    CBitcoinAddress address(params[0].get_str());
-    if (!address.IsValid())
-        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Gcoin address");
+    std::string rawPubKey = params[0].get_str();
+    if (!IsHex(rawPubKey))
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Public Key Hex");
+
+    CPubKey pubkey = ParseHex(rawPubKey);
 
     // Wallet comments
     CWalletTx wtx;
@@ -915,7 +951,13 @@ Value sendbanvotetoaddress(const Array& params, bool fHelp)
 
     EnsureWalletIsUnlocked();
 
-    SendBanVote(address.Get(), wtx);
+    if (!SendBanVote(pubkey, wtx)) {
+        //signature not complete
+        Object result;
+        result.push_back(Pair("hex", EncodeHexTx(wtx)));
+        result.push_back(Pair("complete", false));
+        return result;
+    }
 
     return wtx.GetHash().GetHex();
 }
@@ -3373,6 +3415,55 @@ Value mint(const Array& params, bool fHelp)
     return wtx.GetHash().GetHex();
 }
 
+Value mintvote(const Array& params, bool fHelp)
+{
+    if (!EnsureWalletIsAvailable(fHelp))
+        return Value::null;
+    if (fHelp || params.size() != 0)
+        throw runtime_error(
+            _(__func__) + "\n"
+            "\nmintvote color-coin\n"
+            + HelpRequiringPassphrase() +
+            "\nArguments: NONE\n"
+            "\nResult:\n"
+            "\"transactionid\"  (string) The transaction id.\n"
+            "\nExamples:\n"
+            + HelpExampleCli("mintvote", "")
+        );
+
+    CWalletTx wtx;
+    EnsureWalletIsUnlocked();
+    string strError = pwalletMain->MintMoney((int64_t)1, (type_Color)0, wtx, VOTE);
+    if (strError != "")
+        return strError;
+        //throw JSONRPCError(RPC_WALLET_ERROR, strError);
+    return wtx.GetHash().GetHex();
+}
+
+Value mintlicense(const Array& params, bool fHelp)
+{
+    if (!EnsureWalletIsAvailable(fHelp))
+        return Value::null;
+    if (fHelp || params.size() != 0)
+        throw runtime_error(
+            _(__func__) + "\n"
+            "\nmintvote color-coin\n"
+            + HelpRequiringPassphrase() +
+            "\nArguments: NONE\n"
+            "\nResult:\n"
+            "\"transactionid\"  (string) The transaction id.\n"
+            "\nExamples:\n"
+            + HelpExampleCli("mintvote", "")
+        );
+
+    CWalletTx wtx;
+    EnsureWalletIsUnlocked();
+    string strError = pwalletMain->MintMoney((int64_t)1, (type_Color)0, wtx, LICENSE);
+    if (strError != "")
+        return strError;
+        //throw JSONRPCError(RPC_WALLET_ERROR, strError);
+    return wtx.GetHash().GetHex();
+}
 
 /*
 ///////////

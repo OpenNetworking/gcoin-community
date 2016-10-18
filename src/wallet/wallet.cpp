@@ -1237,7 +1237,8 @@ CAmount CWalletTx::GetAvailableColorCredit(type_Color color, bool fUseCache) con
             continue;
         if (!pwallet->IsSpent(hashTx, i)) {
             const CTxOut &txout = vout[i];
-            nCredit += pwallet->GetCredit(txout, ISMINE_SPENDABLE);
+            isminetype type = color == DEFAULT_ADMIN_COLOR? ISMINE_ALL: ISMINE_SPENDABLE;
+            nCredit += pwallet->GetCredit(txout, type);
             if (!MoneyRange(nCredit))
                 throw std::runtime_error("CWalletTx::GetAvailableCredit() : value out of range");
         }
@@ -1701,8 +1702,9 @@ void CWallet::AvailableCoinsForType(vector<COutput>& vCoins, const type_Color& s
                 if (pcoin->type == LICENSE && pcoin->vout[0].color == send_color)
                    fMintLicense = false;
                 // (2) AE mint new license
-                else if (pcoin->type == MINT && pcoin->vout[0].color == DEFAULT_ADMIN_COLOR && !plicense->HasColorOwner(send_color))
+                else if (pcoin->type == MINT && pcoin->vout[0].color == DEFAULT_ADMIN_COLOR && !plicense->HasColorOwner(send_color)) {
                    fMintLicense = true;
+                }
                 else
                    continue;
             } else if (!(pcoin->type == MINT && pcoin->vout[0].color == DEFAULT_ADMIN_COLOR))
@@ -1717,17 +1719,17 @@ void CWallet::AvailableCoinsForType(vector<COutput>& vCoins, const type_Color& s
                 if (!(IsSpent(wtxid, i)) && mine != ISMINE_NO && !IsLockedCoin((*it).first, i) && (pcoin->vout[i].nValue == COIN || fIncludeZeroValue)) {
                     string addr = GetTxOutputAddr(*pcoin, i);
                     if (type == LICENSE) {
-                        if (fMintLicense && palliance->IsMember(addr)) {
+                        if (fMintLicense && addr == ConsensusAddressForLicense) {
                                 // no send_color license owner, AE create new license.
-                                vCoins.push_back(COutput(pcoin, i, nDepth, (mine & ISMINE_SPENDABLE) != ISMINE_NO));
+                                vCoins.push_back(COutput(pcoin, i, nDepth, (mine & ISMINE_ALL) != ISMINE_NO));
                                 return;
                         } else if (plicense->IsColorOwner(send_color, addr)) {
                                 // send_color-license exists, and want to give his/her license to other address.
-                                vCoins.push_back(COutput(pcoin, i, nDepth, (mine & ISMINE_SPENDABLE) != ISMINE_NO));
+                                vCoins.push_back(COutput(pcoin, i, nDepth, (mine & ISMINE_ALL) != ISMINE_NO));
                                 return;
                         }
-                    } else if (palliance->IsMember(addr)) {// input of special type tx must be alliance(Except license transfer)
-                        vCoins.push_back(COutput(pcoin, i, nDepth, (mine & ISMINE_SPENDABLE) != ISMINE_NO));
+                    } else if (addr == ConsensusAddressForVote) {// input of special type tx must be alliance(Except license transfer)
+                        vCoins.push_back(COutput(pcoin, i, nDepth, (mine & ISMINE_ALL) != ISMINE_NO));
                         return;
                     }
                 }
@@ -1974,7 +1976,7 @@ bool CWallet::SelectCoins(const CAmount& nTargetValue, const type_Color& color, 
 
 // Create Special Type Transaction
 bool CWallet::CreateTypeTransaction(const std::vector<CRecipient>& vecSend, const type_Color& send_color, int type, CWalletTx& wtxNew,
-                                        string& strFailReason, const string &misc)
+                                        string& strFailReason, bool &fComplete, const string &misc)
 {
     CAmount nValue = 0;
 
@@ -2059,11 +2061,17 @@ bool CWallet::CreateTypeTransaction(const std::vector<CRecipient>& vecSend, cons
 
                 // Sign
                 int nIn = 0;
-                BOOST_FOREACH(const PAIRTYPE(const CWalletTx*,unsigned int)& coin, setCoins)
-                    if (!SignSignature(*this, *coin.first, txNew, nIn++)) {
-                        strFailReason = "Signing " + TxType[type] + " transaction failed";
-                        return false;
-                    }
+                BOOST_FOREACH(const PAIRTYPE(const CWalletTx*,unsigned int)& coin, setCoins) {
+                    CTxIn& txin = txNew.vin[nIn];
+                    const CScript& prevPubKey = coin.first->vout[txin.prevout.n].scriptPubKey;
+                    SignSignature(*this, prevPubKey, txNew, nIn);
+                    // ... and merge in other signatures:
+                    CTransaction tx(txNew);
+                    TransactionSignatureCreator creator(this, &tx, nIn, SIGHASH_ALL);
+                    if (!VerifyScript(txin.scriptSig, prevPubKey, STANDARD_SCRIPT_VERIFY_FLAGS, creator.Checker()))
+                        fComplete = false;
+                    nIn++;
+                }
 
                 // Embed the constructed transaction data in wtxNew.
                 *static_cast<CTransaction*>(&wtxNew) = CTransaction(txNew);
@@ -3117,7 +3125,7 @@ bool CWallet::GetDestData(const CTxDestination &dest, const string &key, string 
     return false;
 }
 
-string CWallet::MintMoney(const CAmount& nValue, const type_Color& color, CWalletTx& wtxNew)
+string CWallet::MintMoney(const CAmount& nValue, const type_Color& color, CWalletTx& wtxNew, const tx_type mint_purpose)
 {
     // check if total value of this color meet MAX_MONEY
     if (nValue > MAX_MONEY / COIN) {
@@ -3160,14 +3168,15 @@ string CWallet::MintMoney(const CAmount& nValue, const type_Color& color, CWalle
     if (color == DEFAULT_ADMIN_COLOR) {
         if (nValue != 1)
             return "value of admin color must be 1";
-        CPubKey pubkey;
-        pubkey = vchDefaultKey;
-        scriptPubKey = CScript() << ToByteVector(pubkey) << OP_CHECKSIG;
-        addr = GetDestination(scriptPubKey);
-        if (addr == "")
-            return "GetDestination error";
-        else if (!palliance->IsMember(addr))
-            return "you are not AE";
+        CBitcoinAddress address;
+        if (mint_purpose == LICENSE) {
+            address = CBitcoinAddress(ConsensusAddressForLicense);
+        } else if (mint_purpose == VOTE) {
+            address = CBitcoinAddress(ConsensusAddressForVote);
+        } else {
+            return "Purpose of minting admin color must be \"for LICENSE\" , \"for VOTE\" or \"for BANVOTE\"";
+        }
+        scriptPubKey = GetScriptForDestination(address.Get());
         txNew.vout.resize(1);
         txNew.vout[0].scriptPubKey = scriptPubKey;
         txNew.vout[0].nValue = nValue * COIN;
@@ -3188,7 +3197,7 @@ string CWallet::MintMoney(const CAmount& nValue, const type_Color& color, CWalle
     wtxNew.BindWallet(this);
     txNew.type = MINT;
 
-    if (!SignSignature(*this, scriptPubKey, txNew, 0))
+    if (!(mint_purpose == LICENSE || mint_purpose == VOTE) && !SignSignature(*this, scriptPubKey, txNew, 0))
         return "Signing transaction failed";
 
     *static_cast<CTransaction*>(&wtxNew) = CTransaction(txNew);

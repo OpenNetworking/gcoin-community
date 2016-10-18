@@ -57,6 +57,7 @@ public:
     double DynamicDiff() const { return nDynamicDiff; }
     /** Calculate the threshold of alliance amount to be checked */
     double AllianceThreshold() const { return nAllianceThreshold; }
+    double LicenseThreshold() const { return nLicenseThreshold; }
     /** Calculate the amount of repeated miner */
     unsigned int DynamicMiner() const { return nDynamicMiner; }
     const CBlock& GenesisBlock() const { return genesis; }
@@ -90,6 +91,7 @@ protected:
     uint64_t nPruneAfterHeight;
     double nDynamicDiff;
     double nAllianceThreshold;
+    double nLicenseThreshold;
     unsigned int nDynamicMiner;
     std::vector<CDNSSeedData> vSeeds;
     std::vector<unsigned char> base58Prefixes[MAX_BASE58_TYPES];

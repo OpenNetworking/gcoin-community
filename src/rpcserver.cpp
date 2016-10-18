@@ -388,6 +388,8 @@ static const CRPCCommand vRPCCommands[] =
     { "wallet",             "sendvotetoaddress",           &sendvotetoaddress,           false,     false,      true },
     { "wallet",             "sendbanvotetoaddress",        &sendbanvotetoaddress,        false,     false,      true },
     { "wallet",             "mint",                        &mint,                        false,     false,      true },
+    { "wallet",             "mintvote",                    &mintvote,                    false,     false,      true },
+    { "wallet",             "mintlicense",                 &mintlicense,                 false,     false,      true },
     { "wallet",             "getlicenselist",              &getlicenselist,              false,     false,      true },
     { "wallet",             "getlicenseinfo",              &getlicenseinfo,              false,     false,      true },
 
