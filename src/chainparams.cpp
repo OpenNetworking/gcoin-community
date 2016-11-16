@@ -91,6 +91,8 @@ public:
         consensus.nSubsidyHalvingInterval = 1;
         consensus.nMajorityEnforceBlockUpgrade = 750;
         consensus.nMajorityRejectBlockOutdated = 950;
+        consensus.nMajorityEnforceTxUpgrade = 750;
+        consensus.nMajorityRejectTxOutdated = 950;
         consensus.nMajorityWindow = 1000;
         consensus.powLimit = ArithToUint256(arith_uint256().SetCompact(0x1e0ffff0)); //ArithToUint256(~arith_uint256(0) >> 20);
         consensus.nPowTargetTimespan = 60 * 60; // two weeks
@@ -123,6 +125,7 @@ public:
         txNew.vout[0].color = DEFAULT_ADMIN_COLOR;
         txNew.vout[0].nValue = 0 * COIN;
         txNew.vout[0].scriptPubKey = CScript() << ParseHex("04a3a8584b519bb42f63defcdd1bec62e685d8204ebe83a02f80cae170c207934591a1e739bad2f5ed632844c636504d8587ecabaf0b3168afb4f613895fd1105a") << OP_CHECKSIG;
+        txNew.nVersion = 1;
         genesis.vtx.push_back(txNew);
         genesis.hashPrevBlock.SetNull();
         genesis.nVersion = 1;
@@ -201,6 +204,8 @@ public:
         strNetworkID = "test";
         consensus.nMajorityEnforceBlockUpgrade = 51;
         consensus.nMajorityRejectBlockOutdated = 75;
+        consensus.nMajorityEnforceTxUpgrade = 51;
+        consensus.nMajorityRejectTxOutdated = 75;
         consensus.nMajorityWindow = 100;
         consensus.fPowAllowMinDifficultyBlocks = true;
         pchMessageStart[0] = 0x0b;
@@ -262,6 +267,8 @@ public:
         consensus.nSubsidyHalvingInterval = 150;
         consensus.nMajorityEnforceBlockUpgrade = 750;
         consensus.nMajorityRejectBlockOutdated = 950;
+        consensus.nMajorityEnforceTxUpgrade = 750;
+        consensus.nMajorityRejectTxOutdated = 950;
         consensus.nMajorityWindow = 1000;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         pchMessageStart[0] = 0xfa;

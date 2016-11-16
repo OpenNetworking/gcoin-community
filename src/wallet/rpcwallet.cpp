@@ -512,7 +512,7 @@ static void SendLicense(const CTxDestination& address, const type_Color& color, 
     vector<CRecipient> vecSend;
     CRecipient recipient = {scriptPubKey, COIN, false};
     vecSend.push_back(recipient);
-    if (!pwalletMain->CreateTypeTransaction(vecSend, color, LICENSE, wtxNew, strError, "")) {
+    if (!pwalletMain->CreateTypeTransaction(vecSend, color, LICENSE, wtxNew, strError)) {
         throw JSONRPCError(RPC_WALLET_ERROR, strError);
     }
     if (!pwalletMain->CommitTransaction(wtxNew, reservekey))
@@ -539,6 +539,12 @@ static void CreateLicense(const CTxDestination &address, const type_Color color,
     if (!licenseInfo.DecodeInfo(info)) {
         throw JSONRPCError(RPC_WALLET_ERROR, "Error: Decode license info failed");
     }
+    CDataStream ssLicenseInfo(SER_DISK, CLIENT_VERSION);
+    ssLicenseInfo << licenseInfo;
+    vector<unsigned char> vchInfo;
+    size_t nSize = ssLicenseInfo.size();
+    vchInfo.resize(nSize);
+    ssLicenseInfo.read((char*)&vchInfo[0], nSize);
 
     // Create and send the transaction
     CReserveKey reservekey(pwalletMain);
@@ -546,7 +552,7 @@ static void CreateLicense(const CTxDestination &address, const type_Color color,
     vector<CRecipient> vecSend;
     CRecipient recipient = {scriptPubKey, COIN, false};
     vecSend.push_back(recipient);
-    if (!pwalletMain->CreateTypeTransaction(vecSend, color, LICENSE, wtxNew, strError, info)) {
+    if (!pwalletMain->CreateTypeTransaction(vecSend, color, LICENSE, wtxNew, strError, vchInfo)) {
         throw JSONRPCError(RPC_WALLET_ERROR, strError);
     }
     if (!pwalletMain->CommitTransaction(wtxNew, reservekey))

@@ -18,6 +18,9 @@ struct Params {
     /** Used to check majorities for block version upgrade */
     int nMajorityEnforceBlockUpgrade;
     int nMajorityRejectBlockOutdated;
+    /** Used to check majorities for transaction version upgrade */
+    int nMajorityEnforceTxUpgrade;
+    int nMajorityRejectTxOutdated;
     int nMajorityWindow;
     /** Proof of work parameters */
     uint256 powLimit;

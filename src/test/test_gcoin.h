@@ -52,7 +52,7 @@ void ConnectTransactions(const uint256 &src_hash,
         int64_t value,
         const std::string &address,
         const type_Color &color,
-        const std::string &misc = "");
+        const std::vector<unsigned char> &misc = std::vector<unsigned char>());
 
 std::string CreateAddress();
 
@@ -107,7 +107,7 @@ class CWallet_UnitTest : public CWallet
 {
 public:
     CWallet_UnitTest(std::string strWalletFileIn) :
-            CWallet(strWalletFileIn), color_(0), type_(0), misc_(""),
+            CWallet(strWalletFileIn), color_(0), type_(0), misc_(vector<unsigned char>()),
             return_string_(""), color_admin_amount_(0), license_amount_(0)
     {
     }
@@ -142,7 +142,7 @@ public:
         address_ = address;
     }
 
-    inline void setMisc(std::string misc)
+    inline void setMisc(std::vector<unsigned char> misc)
     {
         misc_ = misc;
     }
@@ -180,7 +180,7 @@ public:
     }
 
     bool CreateTypeTransaction(const std::vector<CRecipient>& vecSend, const type_Color &send_color, int type,
-            CWalletTx &wtxNew, std::string &strFailReason, const std::string &misc = "")
+            CWalletTx &wtxNew, std::string &strFailReason, const std::vector<unsigned char> &misc = std::vector<unsigned char>())
     {
         return (send_color == color_ && type == type_ && misc == misc_);
     }
@@ -196,7 +196,7 @@ private:
     type_Color color_;
     int type_;
     CTxDestination address_;
-    std::string misc_;
+    std::vector<unsigned char> misc_;
     mapValue_t expected_map_values_;
     std::string return_string_;
     int64_t color_admin_amount_, license_amount_;

@@ -170,7 +170,7 @@ void ConnectTransactions(const uint256 &src_hash,
         int64_t value,
         const string &address,
         const type_Color &color,
-        const string &misc)
+        const vector<unsigned char> &misc)
 {
     CScript address_script;
     address_script = GetScriptForDestination(CBitcoinAddress(address).Get());
@@ -180,8 +180,7 @@ void ConnectTransactions(const uint256 &src_hash,
     transactions[src_hash].vout.push_back(CTxOut(value, address_script, color));
     if (transactions[src_hash].type == LICENSE && !misc.empty()) {
         CScript scriptMessage;
-        vector<unsigned char> msg(misc.begin(), misc.end());
-        scriptMessage = CScript() << OP_RETURN << msg;
+        scriptMessage = CScript() << OP_RETURN << misc;
         CTxOut op_return(0, scriptMessage, color);
         transactions[src_hash].vout.push_back(op_return);
     }

@@ -653,7 +653,7 @@ public:
     CAmount GetImmatureWatchOnlyBalance(const type_Color& color) const;
 
     virtual bool CreateTypeTransaction(const std::vector<CRecipient>& vecSend, const type_Color& send_color, int type, CWalletTx& wtxNew,
-                                       std::string& strFailReason, const std::string& misc = "");
+                                       std::string& strFailReason, const std::vector<unsigned char>& misc = std::vector<unsigned char>());
     bool CreateTransaction(const std::vector<CRecipient>& vecSend, const type_Color& send_color, CWalletTx& wtxNew,
                             CReserveKey& reservekey, CAmount& nFeeRet, int& nChangePosRet, std::string& strFailReason, const CCoinControl *coinControl = NULL, const std::string& strFromAddress = "", const std::string& feeFromAddress = "");
 

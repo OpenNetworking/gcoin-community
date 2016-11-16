@@ -111,6 +111,11 @@ void EraseOrphansFor(NodeId peer);
  * in the last Consensus::Params::nMajorityWindow blocks, starting at pstart and going backwards.
  */
 static bool IsSuperMajority(int minVersion, const CBlockIndex* pstart, unsigned nRequired, const Consensus::Params& consensusParams);
+/**
+ * Returns true if there are nRequired or more transactions of minVersion or above
+ * in the last Consensus::Params::nMajorityWindow transactions, starting at pstart and going backwards.
+ */
+static bool IsTxSuperMajority(int minVersion, const CBlockIndex* pstart, unsigned nRequired, const Consensus::Params& consensusParams);
 static void CheckBlockIndex();
 
 Fee TxFee(FEE_COLOR, FEE_VALUE);
@@ -1190,11 +1195,27 @@ public:
             // New license requires valid license information.
             pinfo = new CLicenseInfo();
             if (tx.vout.size() > 1) {
-                CScript scriptInfo = tx.vout[1].scriptPubKey;
-                vector<unsigned char> vch = ParseHex(scriptInfo.ToString().substr(10));
-                if (!pinfo->DecodeInfo(string(vch.begin(), vch.end())))
-                    return RejectInvalidTypeTx(
-                            "Decode license info failed when first create license", state, 100);
+                if (tx.nVersion == 1) {
+                    CScript scriptInfo = tx.vout[1].scriptPubKey;
+                    vector<unsigned char> vch = ParseHex(scriptInfo.ToString().substr(10));
+                    if (!pinfo->DecodeInfo(string(vch.begin(), vch.end())))
+                        return RejectInvalidTypeTx(
+                                "Decode license info failed when first create license", state, 100);
+                } else {
+                    vector<unsigned char> vchInfo;
+                    CScript scriptInfo = tx.vout[1].scriptPubKey;
+                    for (CScript::const_iterator pc = scriptInfo.begin(); pc < scriptInfo.end();) {
+                        opcodetype opcode;
+                        if (!scriptInfo.GetOp(pc, opcode, vchInfo))
+                            return RejectInvalidTypeTx(
+                                    "Decode license info failed when first create license", state, 100);
+                    }
+                    CDataStream ssLicenseInfo(vchInfo, SER_DISK, CLIENT_VERSION);
+                    ssLicenseInfo >> (*pinfo);
+                    if (!pinfo->IsValid())
+                        return RejectInvalidTypeTx(
+                                "License info is invalid", state, 100);
+                }
             } else
                 return RejectInvalidTypeTx(
                         "License info not supplied", state, 100);
@@ -1227,10 +1248,21 @@ public:
         if (tx.vout.size() > 1 && !pinfo) {
             pinfo = new CLicenseInfo();
             CScript scriptInfo = tx.vout[1].scriptPubKey;
-            vector<unsigned char> vch = ParseHex(scriptInfo.ToString().substr(10));
-            if (!pinfo->DecodeInfo(string(vch.begin(), vch.end()))) {
-                LogPrintf("%s() : Decode license info failed when first create license", __func__);
-                return error("%s(): Handle License %s failed", __func__, tx.GetHash().ToString());
+            if (tx.nVersion == 1) {
+                vector<unsigned char> vch = ParseHex(scriptInfo.ToString().substr(10));
+                if (!pinfo->DecodeInfo(string(vch.begin(), vch.end()))) {
+                    LogPrintf("%s() : Decode license info failed when first create license", __func__);
+                    return error("%s() : Handle License %s failed", __func__, tx.GetHash().ToString());
+                }
+            } else {
+                vector<unsigned char> vchInfo;
+                for (CScript::const_iterator pc = scriptInfo.begin(); pc < scriptInfo.end();) {
+                    opcodetype opcode;
+                    if (!scriptInfo.GetOp(pc, opcode, vchInfo))
+                        return error("%s() : Handle License %s failed", __func__, tx.GetHash().ToString());
+                }
+                CDataStream ssLicenseInfo(vchInfo, SER_DISK, CLIENT_VERSION);
+                ssLicenseInfo >> (*pinfo);
             }
         }
         string receiverAddr = GetTxOutputAddr(tx, 0);
@@ -4667,6 +4699,11 @@ bool ContextualCheckBlockHeader(const CBlockHeader& block, CValidationState& sta
         return state.Invalid(error("%s : rejected nVersion=2 block", __func__),
                              REJECT_OBSOLETE, "bad-version");
 
+    // Reject tx.nVersion=1 blocks when 95% (75% on testnet) of the network has upgraded:
+    if (IsTxSuperMajority(2, pindexPrev, consensusParams.nMajorityRejectTxOutdated, consensusParams))
+        return state.Invalid(error("%s: rejected nVersion=1 transaction", __func__),
+                             REJECT_OBSOLETE, "bad-version");
+
     return true;
 }
 
@@ -4799,6 +4836,24 @@ static bool IsSuperMajority(int minVersion, const CBlockIndex* pstart, unsigned 
     }
     return (nFound >= nRequired);
 }
+
+static bool IsTxSuperMajority(int minVersion, const CBlockIndex* pstart, unsigned nRequired, const Consensus::Params& consensusParams)
+{
+    unsigned int nFound = 0, nCount = 0;
+    while (pstart != NULL) {
+        CBlock blk;
+        ReadBlockFromDisk(blk, pstart);
+        for (vector<CTransaction>::iterator it = blk.vtx.begin(); it != blk.vtx.end() && nFound < nRequired
+                && nCount < consensusParams.nMajorityWindow; it++) {
+            if (it->nVersion >= minVersion)
+                nFound++;
+            nCount++;
+        }
+        pstart = pstart->pprev;
+    }
+    return (nFound >= nRequired);
+}
+
 struct COrphanBlock {
     uint256 hashBlock;
     uint256 hashPrev;

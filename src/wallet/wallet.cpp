@@ -1974,7 +1974,7 @@ bool CWallet::SelectCoins(const CAmount& nTargetValue, const type_Color& color, 
 
 // Create Special Type Transaction
 bool CWallet::CreateTypeTransaction(const std::vector<CRecipient>& vecSend, const type_Color& send_color, int type, CWalletTx& wtxNew,
-                                        string& strFailReason, const string &misc)
+                                        string& strFailReason, const vector<unsigned char> &misc)
 {
     CAmount nValue = 0;
 
@@ -2024,8 +2024,7 @@ bool CWallet::CreateTypeTransaction(const std::vector<CRecipient>& vecSend, cons
                 // vout OP_RETURN carries message
                 CScript scriptMessage;
                 if (type == LICENSE && !misc.empty()) {
-                    vector<unsigned char> msg(misc.begin(), misc.end());
-                    scriptMessage = CScript() << OP_RETURN << msg;
+                    scriptMessage = CScript() << OP_RETURN << misc;
                     CTxOut op_return(0, scriptMessage, send_color);
                     txNew.vout.push_back(op_return);
                 }

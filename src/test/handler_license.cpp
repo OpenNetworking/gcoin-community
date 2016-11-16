@@ -47,7 +47,13 @@ struct CreateLicenseHandlerCheckValidFixture : public LicenseHandlerFixture
         CreateTransaction(license_hash, LICENSE);
         CreateTransaction(out_hash, LICENSE);
         ConnectTransactions(mint_admin_hash, license_hash, COIN, member, DEFAULT_ADMIN_COLOR);
-        ConnectTransactions(license_hash, out_hash, COIN, issuer, color, info.EncodeInfo());
+        CDataStream ssLicenseInfo(SER_DISK, CLIENT_VERSION);
+        ssLicenseInfo << info;
+        vector<unsigned char> vchInfo;
+        size_t nSize = ssLicenseInfo.size();
+        vchInfo.resize(nSize);
+        ssLicenseInfo.read((char*)&vchInfo[0], nSize);
+        ConnectTransactions(license_hash, out_hash, COIN, issuer, color, vchInfo);
     }
 
     ~CreateLicenseHandlerCheckValidFixture()
@@ -101,7 +107,9 @@ BOOST_FIXTURE_TEST_CASE(CreateLicenseHandlerCheckValidExistedColor, CreateLicens
 
 BOOST_FIXTURE_TEST_CASE(CreateLicenseHandlerCheckValidInvalidInfo, CreateLicenseHandlerCheckValidFixture)
 {
-    ConnectTransactions(license_hash, out_hash, COIN, issuer, color, "fake_info");
+    unsigned char temp[] = {'f', 'a', 'k', 'e'};
+    vector<unsigned char> vInfo(temp, temp + sizeof(temp) / sizeof(unsigned char));
+    ConnectTransactions(license_hash, out_hash, COIN, issuer, color, vInfo);
     CheckFalse(100, __func__);
 }
 
