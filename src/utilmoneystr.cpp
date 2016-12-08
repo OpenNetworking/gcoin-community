@@ -34,6 +34,24 @@ string FormatMoney(const CAmount& n, bool fPlus)
     return str;
 }
 
+string FormatColor(const type_Color& n)
+{
+    // Note: not using straight sprinVtf here because we do NOT want
+    // localized number formatting.
+    return strprintf("%d", n);
+}
+
+string FormatMoney(const CColorAmount& m, bool fPlus)
+{
+    std::string str;
+    for (CColorAmount::const_iterator it(m.begin()); it != m.end(); it++) {
+        str += strprintf("%d:", it->first);
+        str += FormatMoney(it->second, fPlus);
+        str += std::string(",");
+    }
+    str.erase(str.end() - 1);
+    return str;
+}
 
 bool ParseMoney(const string& str, CAmount& nRet)
 {
@@ -77,5 +95,51 @@ bool ParseMoney(const char* pszIn, CAmount& nRet)
     CAmount nValue = nWhole*COIN + nUnits;
 
     nRet = nValue;
+    return true;
+}
+
+bool ParseMoney(const string& str, CColorAmount& mRet)
+{
+    size_t found;
+    for (size_t i = 0; i < str.size(); i = found + 1) {
+        found = str.find(",", i);
+        if (found == string::npos)
+            found = str.size();
+        string part = str.substr(i, found - 1);
+
+        size_t c = part.find(":");
+        if (c == string::npos)
+            return false;
+        type_Color color;
+        CAmount nValue;
+        if (!ParseColor(part.substr(0, c - 1).c_str(), color))
+            return false;
+        if (!ParseMoney(part.substr(c + 1, part.size() - 1).c_str(), nValue))
+            return false;
+        mRet[color] = nValue;
+    }
+    return true;
+}
+
+bool ParseColor(const char* pszIn, type_Color& nRet)
+{
+    string strColor;
+    const char* p = pszIn;
+    while (isspace(*p))
+        p++;
+    for (; *p; p++)
+    {
+        if (isspace(*p))
+            break;
+        if (!isdigit(*p))
+            return false;
+        strColor.insert(strColor.end(), *p);
+    }
+    for (; *p; p++)
+        if (!isspace(*p))
+            return false;
+    if (strColor.size() > 10) // guard against 32 bit overflow
+        return false;
+    nRet = atoi(strColor);
     return true;
 }

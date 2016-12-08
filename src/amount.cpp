@@ -7,6 +7,21 @@
 
 #include "tinyformat.h"
 
+
+std::ostream& operator<<(std::ostream& os, const CColorAmount& ca)
+{
+    CColorAmount::const_iterator it(ca.begin());
+    while(true) {
+        os << it->first << ":" << it->second;
+        it++;
+        if (it != ca.end())
+            os << ", ";
+        else
+            break;
+    }
+    return os;
+}
+
 CFeeRate::CFeeRate(const CAmount& nFeePaid, size_t nSize)
 {
     if (nSize > 0)
@@ -22,6 +37,6 @@ CAmount CFeeRate::GetFee(size_t nSize) const
 
 std::string CFeeRate::ToString() const
 {
-    return strprintf("%d.%08d BTC/kB", nSatoshisPerK / COIN, nSatoshisPerK % COIN);
+    return strprintf("%d.%08d GCOIN/kB", nSatoshisPerK / COIN, nSatoshisPerK % COIN);
 }
 
