@@ -9,6 +9,7 @@
 #include "hash.h"
 #include "tinyformat.h"
 #include "utilstrencodings.h"
+#include "utilmoneystr.h"
 
 std::string COutPoint::ToString() const
 {
@@ -89,22 +90,16 @@ CTransaction& CTransaction::operator=(const CTransaction &tx) {
     return *this;
 }
 
-CAmount CTransaction::GetValueOut() const
+CColorAmount CTransaction::GetValueOut() const
 {
-    CAmount nValueOut = 0;
-    colorAmount_t nValueOut_;
+    CColorAmount mValueOut;
     for (std::vector<CTxOut>::const_iterator it(vout.begin()); it != vout.end(); ++it)
     {
-        nValueOut += it->nValue;
-        if (nValueOut_.find(it->color) != nValueOut_.end()) {
-            nValueOut_[it->color] += it->nValue;
-        } else {
-            nValueOut_[it->color] = it->nValue;
-        }
-        if (!MoneyRange(it->nValue) || !MoneyRange(nValueOut_[it->color]))
+        mValueOut += it->mValue;
+        if (!MoneyRange(it->mValue.Value()) || !MoneyRange(mValueOut[it->mValue.Color()]))
             throw std::runtime_error("CTransaction::GetValueOut(): value out of range");
     }
-    return nValueOut;
+    return mValueOut;
 }
 
 double CTransaction::ComputePriority(double dPriorityInputs, unsigned int nTxSize) const
