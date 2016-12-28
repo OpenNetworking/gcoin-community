@@ -327,28 +327,31 @@ public:
 class CFeeRate
 {
 private:
-    CAmount nSatoshisPerK; // unit is satoshis-per-1,000-bytes
+    CColorAmount mSatoshisPerK; // unit is satoshis-per-1,000-bytes
 public:
-    CFeeRate() : nSatoshisPerK(0) { }
-    explicit CFeeRate(const CAmount& _nSatoshisPerK): nSatoshisPerK(_nSatoshisPerK) { }
+    CFeeRate() : mSatoshisPerK(CColorAmount(1, 0)) { }
+    explicit CFeeRate(const CColorAmount& _mSatoshisPerK): mSatoshisPerK(_mSatoshisPerK) { }
+    explicit CFeeRate(const CAmount& _nSatoshisPerK): mSatoshisPerK(CColorAmount(1, _nSatoshisPerK)) { }
+    CFeeRate(const CColorAmount& mFeePaid, size_t nSize);
     CFeeRate(const CAmount& nFeePaid, size_t nSize);
-    CFeeRate(const CFeeRate& other) { nSatoshisPerK = other.nSatoshisPerK; }
+    CFeeRate(const CFeeRate& other) { mSatoshisPerK = other.mSatoshisPerK; }
 
-    CAmount GetFee(size_t size) const; // unit returned is satoshis
-    CAmount GetFeePerK() const { return GetFee(1000); } // satoshis-per-1000-bytes
+    CColorAmount GetFee(size_t size) const; // unit returned is satoshis
+    CColorAmount GetFeePerK() const { return GetFee(1000); } // satoshis-per-1000-bytes
 
-    friend bool operator<(const CFeeRate& a, const CFeeRate& b) { return a.nSatoshisPerK < b.nSatoshisPerK; }
-    friend bool operator>(const CFeeRate& a, const CFeeRate& b) { return a.nSatoshisPerK > b.nSatoshisPerK; }
-    friend bool operator==(const CFeeRate& a, const CFeeRate& b) { return a.nSatoshisPerK == b.nSatoshisPerK; }
-    friend bool operator<=(const CFeeRate& a, const CFeeRate& b) { return a.nSatoshisPerK <= b.nSatoshisPerK; }
-    friend bool operator>=(const CFeeRate& a, const CFeeRate& b) { return a.nSatoshisPerK >= b.nSatoshisPerK; }
+    friend bool operator<(const CFeeRate& a, const CFeeRate& b) { return a.mSatoshisPerK < b.mSatoshisPerK; }
+    friend bool operator>(const CFeeRate& a, const CFeeRate& b) { return a.mSatoshisPerK > b.mSatoshisPerK; }
+    friend bool operator==(const CFeeRate& a, const CFeeRate& b) { return a.mSatoshisPerK == b.mSatoshisPerK; }
+    friend bool operator<=(const CFeeRate& a, const CFeeRate& b) { return a.mSatoshisPerK <= b.mSatoshisPerK; }
+    friend bool operator>=(const CFeeRate& a, const CFeeRate& b) { return a.mSatoshisPerK >= b.mSatoshisPerK; }
     std::string ToString() const;
 
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
-        READWRITE(nSatoshisPerK);
+        colorAmount_t mTemp = mSatoshisPerK;
+        READWRITE(mTemp);
     }
 };
 

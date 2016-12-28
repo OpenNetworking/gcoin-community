@@ -22,21 +22,26 @@ std::ostream& operator<<(std::ostream& os, const CColorAmount& ca)
     return os;
 }
 
-CFeeRate::CFeeRate(const CAmount& nFeePaid, size_t nSize)
+CFeeRate::CFeeRate(const CColorAmount& mFeePaid, size_t nSize)
 {
     if (nSize > 0)
-        nSatoshisPerK = nFeePaid*1000/nSize;
+        mSatoshisPerK = mFeePaid*1000/nSize;
     else
-        nSatoshisPerK = 0;
+        mSatoshisPerK.init(1, 0);
 }
 
-CAmount CFeeRate::GetFee(size_t nSize) const
+CFeeRate::CFeeRate(const CAmount& nFeePaid, size_t nSize)
 {
-    return 0;
+    CFeeRate(CColorAmount(1, nFeePaid), nSize);
+}
+
+CColorAmount CFeeRate::GetFee(size_t nSize) const
+{
+    return CColorAmount(1, 0);
 }
 
 std::string CFeeRate::ToString() const
 {
-    return strprintf("%d.%08d GCOIN/kB", nSatoshisPerK / COIN, nSatoshisPerK % COIN);
+    return strprintf("%d.%08d GCOIN/kB", mSatoshisPerK.Value() / COIN, mSatoshisPerK.Value() % COIN);
 }
 
