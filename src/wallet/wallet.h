@@ -144,9 +144,8 @@ static void WriteOrderPos(const int64_t& nOrderPos, mapValue_t& mapValue)
 struct COutputEntry
 {
     CTxDestination destination;
-    CAmount amount;
+    CColorAmount mAmount;
     int vout;
-    type_Color color;
 };
 
 /** A transaction with a merkle branch linking it to the block chain. */
