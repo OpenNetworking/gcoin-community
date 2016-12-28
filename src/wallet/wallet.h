@@ -236,15 +236,15 @@ public:
     mutable bool fImmatureWatchCreditCached;
     mutable bool fAvailableWatchCreditCached;
     mutable bool fChangeCached;
-    mutable CAmount nDebitCached;
-    mutable CAmount nCreditCached;
-    mutable CAmount nImmatureCreditCached;
-    mutable colorAmount_t nAvailableCreditCached;
-    mutable CAmount nWatchDebitCached;
-    mutable CAmount nWatchCreditCached;
-    mutable CAmount nImmatureWatchCreditCached;
-    mutable CAmount nAvailableWatchCreditCached;
-    mutable CAmount nChangeCached;
+    mutable CColorAmount mDebitCached;
+    mutable CColorAmount mCreditCached;
+    mutable CColorAmount mImmatureCreditCached;
+    mutable CColorAmount mAvailableCreditCached;
+    mutable CColorAmount mWatchDebitCached;
+    mutable CColorAmount mWatchCreditCached;
+    mutable CColorAmount mImmatureWatchCreditCached;
+    mutable CColorAmount mAvailableWatchCreditCached;
+    mutable CColorAmount mChangeCached;
 
     CWalletTx()
     {
@@ -285,15 +285,15 @@ public:
         fImmatureWatchCreditCached = false;
         fAvailableWatchCreditCached = false;
         fChangeCached = false;
-        nDebitCached = 0;
-        nCreditCached = 0;
-        nImmatureCreditCached = 0;
-        nAvailableCreditCached.clear();
-        nWatchDebitCached = 0;
-        nWatchCreditCached = 0;
-        nAvailableWatchCreditCached = 0;
-        nImmatureWatchCreditCached = 0;
-        nChangeCached = 0;
+        mDebitCached.clear();
+        mCreditCached.clear();
+        mImmatureCreditCached.clear();
+        mAvailableCreditCached.clear();
+        mWatchDebitCached.clear();
+        mWatchCreditCached.clear();
+        mAvailableWatchCreditCached.clear();
+        mImmatureWatchCreditCached.clear();
+        mChangeCached.clear();
         nOrderPos = -1;
     }
 
@@ -361,24 +361,24 @@ public:
     }
 
     //! filter decides which addresses will count towards the debit
-    CAmount GetDebit(const isminefilter& filter) const;
-    CAmount GetCredit(const isminefilter& filter) const;
-    CAmount GetImmatureCredit(bool fUseCache=true) const;
-    void GetAvailableCredit(colorAmount_t &color_amount) const;
+    CColorAmount GetDebit(const isminefilter& filter) const;
+    CColorAmount GetCredit(const isminefilter& filter) const;
+    CColorAmount GetImmatureCredit(bool fUseCache=true) const;
+    CColorAmount GetAvailableCredit(bool fUseCache=true) const;
     CAmount GetAvailableColorCredit(type_Color color = 0, bool fUseCache=true) const;
-    CAmount GetImmatureWatchOnlyCredit(const bool& fUseCache=true) const;
-    CAmount GetAvailableWatchOnlyCredit(const bool& fUseCache=true) const;
-    CAmount GetChange() const;
+    CColorAmount GetImmatureWatchOnlyCredit(const bool& fUseCache=true) const;
+    CColorAmount GetAvailableWatchOnlyCredit(const bool& fUseCache=true) const;
+    CColorAmount GetChange() const;
 
     void GetAmounts(std::list<COutputEntry>& listReceived,
-                    std::list<COutputEntry>& listSent, CAmount& nFee, std::string& strSentAccount, const isminefilter& filter) const;
+                    std::list<COutputEntry>& listSent, CColorAmount& mFee, std::string& strSentAccount, const isminefilter& filter) const;
 
-    void GetAccountAmounts(const std::string& strAccount, colorAmount_t& nReceived,
-                           colorAmount_t& nSent, const isminefilter& filter) const;
+    void GetAccountAmounts(const std::string& strAccount, CColorAmount& mReceived,
+                           CColorAmount& mSent, CColorAmount& mFee, const isminefilter& filter) const;
 
     bool IsFromMe(const isminefilter& filter) const
     {
-        return (GetDebit(filter) > 0);
+        return (GetDebit(filter).TotalValue() > 0);
     }
 
     virtual bool IsTrusted() const;
