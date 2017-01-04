@@ -35,7 +35,7 @@
  * Settings
  */
 extern CFeeRate payTxFee;
-extern CAmount maxTxFee;
+extern CColorAmount maxTxFee;
 extern unsigned int nTxConfirmTarget;
 extern bool bSpendZeroConfChange;
 extern bool fSendFreeTransactions;
@@ -450,10 +450,10 @@ public:
 class CWallet : public CHDKeyStore, public CValidationInterface
 {
 private:
-    bool SelectCoinsForLicense(const CAmount& nTargetValue, const type_Color& send_color, std::set<std::pair<const CWalletTx*, unsigned int> >& setCoinsRet,
-                        CAmount& nValueRet) const;
-    bool SelectCoins(const CAmount& nTargetValue, const type_Color& color, std::set<std::pair<const CWalletTx*, unsigned int> >& setCoinsRet,
-                    CAmount& nValueRet, const CCoinControl *coinControl = NULL, const std::string& strFromAddress = "") const;
+    bool SelectCoinsForLicense(const CColorAmount& mTargetValue, std::set<std::pair<const CWalletTx*, unsigned int> >& setCoinsRet,
+                        CColorAmount& mValueRet) const;
+    bool SelectCoins(const CColorAmount& mTargetValue, std::set<std::pair<const CWalletTx*, unsigned int> >& setCoinsRet,
+                    CColorAmount& mValueRet, const CCoinControl *coinControl = NULL, const std::string& strFromAddress = "") const;
 
     CWalletDB *pwalletdbEncryption;
 
@@ -536,7 +536,6 @@ public:
     }
 
     std::map<uint256, CWalletTx> mapWallet;
-    std::map<std::string, std::set<std::pair<uint256, unsigned int> > > mapWalletAddr;
 
     int64_t nOrderPosNext;
     std::map<uint256, int> mapRequestCount;
@@ -557,7 +556,7 @@ public:
     void AvailableCoinsForLicense(std::vector<COutput>& vCoins, const type_Color& send_color, bool fOnlyConfirmed = true, bool fIncludeZeroValue = false) const;
     void AvailableCoins(std::vector<COutput>& vCoins, const type_Color& color, bool fOnlyConfirmed = true, const CCoinControl *coinControl = NULL,
                         bool fIncludeZeroValue = false, const std::string& strFromAddress = "") const;
-    bool SelectCoinsMinConf(const CAmount& nTargetValue, int nConfMine, int nConfTheirs, std::vector<COutput> vCoins, std::set<std::pair<const CWalletTx*, unsigned int> >& setCoinsRet, CAmount& nValueRet) const;
+    bool SelectCoinsMinConf(const CColorAmount& mTargetValue, int nConfMine, int nConfTheirs, std::vector<COutput> vCoins, std::set<std::pair<const CWalletTx*, unsigned int> >& setCoinsRet, CColorAmount& mValueRet) const;
 
     bool IsSpent(const uint256& hash, unsigned int n) const;
 
@@ -636,30 +635,27 @@ public:
     void ResendWalletTransactions(int64_t nBestBlockTime);
     std::vector<uint256> ResendWalletTransactionsBefore(int64_t nTime);
 
-    virtual CAmount GetColor0Balance() const;
-    virtual CAmount GetVoteBalance() const;
     bool    GetLicensePubKey(const type_Color& color, CScript& scriptPubKey) const;
     virtual CAmount GetSendLicenseBalance(const type_Color& color) const;
-    void    GetBalance(colorAmount_t& color_amount) const;
-    void    GetAddressBalance(const std::string& strAddress, colorAmount_t& color_amount, int nMinDepth) const;
-    CAmount GetColorBalanceFromFixedAddress(const std::string& strFromAddress, const type_Color& color) const;
+    CColorAmount GetBalance() const;
+    CAmount GetColorBalanceFromFixedAddress(const std::string& strFromAddress, const type_Color& color, const int nMinDepth = 0) const;
     CAmount GetColorBalance(const type_Color& color) const;
-    void    GetUnconfirmedBalance(colorAmount_t& color_amount) const;
+    CColorAmount GetUnconfirmedBalance() const;
     CAmount GetUnconfirmedColorBalance(const type_Color& color) const;
-    CAmount GetImmatureBalance(const type_Color& color) const;
-    CAmount GetWatchOnlyBalance(const type_Color& color) const;
-    CAmount GetUnconfirmedWatchOnlyBalance(const type_Color& color) const;
-    CAmount GetImmatureWatchOnlyBalance(const type_Color& color) const;
+    CColorAmount GetImmatureBalance() const;
+    CColorAmount GetWatchOnlyBalance() const;
+    CColorAmount GetUnconfirmedWatchOnlyBalance() const;
+    CColorAmount GetImmatureWatchOnlyBalance() const;
 
-    virtual bool CreateLicenseTransaction(const std::vector<CRecipient>& vecSend, const type_Color& send_color, CWalletTx& wtxNew,
-                                       std::string& strFailReason, bool &fComplete);
-    bool CreateTransaction(const std::vector<CRecipient>& vecSend, const type_Color& send_color, CWalletTx& wtxNew,
-                            CReserveKey& reservekey, CAmount& nFeeRet, int& nChangePosRet, std::string& strFailReason, const CCoinControl *coinControl = NULL, const std::string& strFromAddress = "", const std::string& feeFromAddress = "");
+    virtual bool CreateLicenseTransaction(const std::vector<CRecipient>& vecSend, CWalletTx& wtxNew, std::string& strFailReason, bool &fComplete);
+    bool CreateTransaction(const std::vector<CRecipient>& vecSend, CWalletTx& wtxNew, CReserveKey& reservekey, CColorAmount& mFeeRet, int& nChangePosRet,
+                           std::string& strFailReason, const CCoinControl *coinControl = NULL, const std::string& feeFromAddress = "",
+                           const std::string& strFeeAddress = "");
 
     virtual bool CommitTransaction(CWalletTx& wtxNew, CReserveKey& reservekey);
 
     static CFeeRate minTxFee;
-    static CAmount GetMinimumFee(unsigned int nTxBytes, unsigned int nConfirmTarget, const CTxMemPool& pool);
+    static CColorAmount GetMinimumFee(unsigned int nTxBytes, unsigned int nConfirmTarget, const CTxMemPool& pool);
 
     bool NewKeyPool();
 
@@ -690,24 +686,23 @@ public:
     void GetAllReserveKeys(std::set<CKeyID>& setAddress) const;
 
     std::set< std::set<CTxDestination> > GetAddressGroupings();
-    std::map<CTxDestination, colorAmount_t > GetAddressBalances();
-
-    CAmount GetFixedAddressColorBalances(const std::string& strAddress, const type_Color& color) const;
+    CColorAmount GetAddressBalance(const std::string& strAddress, const int nMinDepth = 0) const;
+    std::map<CTxDestination, CColorAmount> GetAddressBalances(const int nMinDepth = 0) const;
 
     std::set<CTxDestination> GetAccountAddresses(std::string strAccount) const;
 
     isminetype IsMine(const CTxIn& txin) const;
-    CAmount GetDebit(const CTxIn& txin, const isminefilter& filter) const;
+    CColorAmount GetDebit(const CTxIn& txin, const isminefilter& filter) const;
     isminetype IsMine(const CTxOut& txout) const;
-    CAmount GetCredit(const CTxOut& txout, const isminefilter& filter) const;
+    CColorAmount GetCredit(const CTxOut& txout, const isminefilter& filter) const;
     bool IsChange(const CTxOut& txout) const;
-    CAmount GetChange(const CTxOut& txout) const;
+    CColorAmount GetChange(const CTxOut& txout) const;
     bool IsMine(const CTransaction& tx) const;
     /** should probably be renamed to IsRelevantToMe */
     bool IsFromMe(const CTransaction& tx) const;
-    CAmount GetDebit(const CTransaction& tx, const isminefilter& filter) const;
-    CAmount GetCredit(const CTransaction& tx, const isminefilter& filter) const;
-    CAmount GetChange(const CTransaction& tx) const;
+    CColorAmount GetDebit(const CTransaction& tx, const isminefilter& filter) const;
+    CColorAmount GetCredit(const CTransaction& tx, const isminefilter& filter) const;
+    CColorAmount GetChange(const CTransaction& tx) const;
     void SetBestChain(const CBlockLocator& loc);
 
     DBErrors LoadWallet(bool& fFirstRunRet);
@@ -781,7 +776,7 @@ public:
     void SetBroadcastTransactions(bool broadcast) { fBroadcastTransactions = broadcast; }
 
     bool SignSignatureWallet(const CScript& fromPubKey, CMutableTransaction& txTo, unsigned int nIn);
-    std::string MintMoney(const CAmount& nValue, const type_Color& color, CWalletTx& wtxNew, int type = NORMAL);
+    std::string MintMoney(const CColorAmount& mValue, CWalletTx& wtxNew, int type = NORMAL);
     bool SetAlliance(CScript& script, CWalletTx& wtxNew);
     bool CreateLicense(const CTxDestination &address, const type_Color color, const std::string &info, CWalletTx& wtxNew);
     bool SetMiner(const CTxDestination& address, CWalletTx& wtxNew, int type);
