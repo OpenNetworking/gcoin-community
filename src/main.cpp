@@ -1920,16 +1920,10 @@ CScript TxInfo::GetTxOutScriptOfIndex(unsigned int index) const {
     return vout[index].scriptPubKey;
 }
 
-type_Color TxInfo::GetTxOutColorOfIndex(unsigned int index) const {
-    if (index >= vout.size())
-        throw runtime_error("GetTxOutColorOfIndex : invalid index.");
-    return vout[index].color;
-}
-
-int64_t TxInfo::GetTxOutValueOfIndex(unsigned int index) const {
+CColorAmount TxInfo::GetTxOutValueOfIndex(unsigned int index) const {
     if (index >= vout.size())
         throw runtime_error("GetTxOutValueOfIndex : invalid index.");
-    return vout[index].nValue;
+    return vout[index].mValue;
 }
 
 tx_type TxInfo::GetTxType() const {

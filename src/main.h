@@ -386,8 +386,7 @@ public:
     bool init(const COutPoint &outpoint, const CBlock *block = NULL, bool fUndo = false);
     std::string GetTxOutAddressOfIndex(unsigned int index) const;
     CScript GetTxOutScriptOfIndex(unsigned int index) const;
-    type_Color GetTxOutColorOfIndex(unsigned int index) const;
-    int64_t GetTxOutValueOfIndex(unsigned int index) const;
+    CColorAmount GetTxOutValueOfIndex(unsigned int index) const;
     tx_type GetTxType() const;
     uint256 GetTxHash() const;
     size_t GetTxOutSize() const;
