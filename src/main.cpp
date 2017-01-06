@@ -6564,12 +6564,12 @@ public:
     }
 } instance_of_cmaincleanup;
 
-bool Fee::CheckFee(const type_Color& Color, const int64_t& Value) const {
-    return Color == color && Value >= value;
+bool Fee::CheckFee(const CColorAmount& _mValue) const {
+    return _mValue >= mValue;
 }
 
 bool Fee::CheckFirstCoinBaseTransactions(const CBlock& block) const {
-    CAmount totalfee = 0;
+    CColorAmount totalfee;
     for (unsigned int i = 1; i < block.vtx.size(); i++) {
         const CTransaction& tx = block.vtx[i];
         if (tx.type == NORMAL) {
@@ -6580,14 +6580,11 @@ bool Fee::CheckFirstCoinBaseTransactions(const CBlock& block) const {
                     LogPrintf("%s : fetch input failed\n", __func__);
                     return false;
                 }
-
-                if (txinfo.GetTxOutColorOfIndex(txin.prevout.n) == color)
-                    totalfee += txinfo.GetTxOutValueOfIndex(txin.prevout.n);
+                totalfee += txinfo.GetTxOutValueOfIndex(txin.prevout.n);
             }
 
             BOOST_FOREACH(const CTxOut& txout, tx.vout) {
-                if (txout.color == TxFee.GetColor())
-                    totalfee -= txout.nValue;
+                totalfee -= txout.mValue;
             }
         }
     }
@@ -6596,16 +6593,15 @@ bool Fee::CheckFirstCoinBaseTransactions(const CBlock& block) const {
     if (!tx.IsCoinBase())
         return false;
     if (tx.vout.size() == 1) {
-        if (tx.vout[0].color != DEFAULT_ADMIN_COLOR || tx.vout[0].nValue != 0)
+        if (tx.vout[0].mValue != CColorAmount(DEFAULT_ADMIN_COLOR, 0))
             return false;
         return true;
     } else if (tx.vout.size() != 2)
         return false;
-    return  tx.vout[1].color == color && tx.vout[1].nValue == totalfee;
+    return tx.vout[1].mValue == totalfee;
 }
 
 void Fee::SetOutputForFee(CTxOut &txout, const CScript& scriptPubKeyIn, unsigned int cnt) {
     txout.scriptPubKey = scriptPubKeyIn;
-    txout.nValue = value * cnt;
-    txout.color = color;
+    txout.mValue = mValue;
 }

@@ -677,15 +677,13 @@ static const int64_t FEE_VALUE = COIN;
 class Fee
 {
 private:
-    const type_Color color;
-    const int64_t value;
+    const CColorAmount mValue;
 public:
-    inline Fee(type_Color Color, int64_t Value) : color(Color), value(Value) { }
-    bool CheckFee(const type_Color& color, const int64_t& Value) const;
+    inline Fee(const CColorAmount& _mValue) : mValue(_mValue) { }
+    bool CheckFee(const CColorAmount& _mValue) const;
     bool CheckFirstCoinBaseTransactions(const CBlock& block) const;
     void SetOutputForFee(CTxOut &txout, const CScript& scriptPubKeyIn, unsigned int cnt);
-    type_Color GetColor() const { return color; }
-    int64_t GetFee() const { return value;}
+    CColorAmount GetFee() const { return mValue; }
 };
 
 
