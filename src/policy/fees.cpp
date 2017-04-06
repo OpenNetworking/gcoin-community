@@ -377,14 +377,14 @@ void CBlockPolicyEstimator::processTransaction(const CTxMemPoolEntry& entry, boo
 
     LogPrint("estimatefee", "Blockpolicy mempool tx %s ", hash.ToString().substr(0,10));
     // Record this as a priority estimate
-    if (entry.GetFee() == 0 || isPriDataPoint(feeRate, curPri)) {
+    if (entry.GetFee().TotalValue() == 0 || isPriDataPoint(feeRate, curPri)) {
         mapMemPoolTxs[hash].stats = &priStats;
         mapMemPoolTxs[hash].bucketIndex =  priStats.NewTx(txHeight, curPri);
     }
     // Record this as a fee estimate
     else if (isFeeDataPoint(feeRate, curPri)) {
         mapMemPoolTxs[hash].stats = &feeStats;
-        mapMemPoolTxs[hash].bucketIndex = feeStats.NewTx(txHeight, (double)feeRate.GetFeePerK());
+        mapMemPoolTxs[hash].bucketIndex = feeStats.NewTx(txHeight, (double)feeRate.GetFeePerK().Value());
     }
     else {
         LogPrint("estimatefee", "not adding\n");
@@ -419,12 +419,12 @@ void CBlockPolicyEstimator::processBlockTx(unsigned int nBlockHeight, const CTxM
     double curPri = entry.GetPriority(nBlockHeight);
 
     // Record this as a priority estimate
-    if (entry.GetFee() == 0 || isPriDataPoint(feeRate, curPri)) {
+    if (entry.GetFee().Value() == 0 || isPriDataPoint(feeRate, curPri)) {
         priStats.Record(blocksToConfirm, curPri);
     }
     // Record this as a fee estimate
     else if (isFeeDataPoint(feeRate, curPri)) {
-        feeStats.Record(blocksToConfirm, (double)feeRate.GetFeePerK());
+        feeStats.Record(blocksToConfirm, (double)feeRate.GetFeePerK().Value());
     }
 }
 

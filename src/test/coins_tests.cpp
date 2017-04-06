@@ -133,7 +133,7 @@ BOOST_AUTO_TEST_CASE(coins_cache_simulation_test)
                 }
                 coins.nVersion = insecure_rand();
                 coins.vout.resize(1);
-                coins.vout[0].nValue = insecure_rand();
+                coins.vout[0].mValue.init(0, insecure_rand());
                 *entry = coins;
             } else {
                 coins.Clear();

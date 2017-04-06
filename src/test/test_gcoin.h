@@ -49,9 +49,8 @@ void CreateTransaction(
 
 void ConnectTransactions(const uint256 &src_hash,
         const uint256 &dst_hash,
-        int64_t value,
+        CColorAmount mValue,
         const std::string &address,
-        const type_Color &color,
         const std::string &misc = "");
 
 std::string CreateAddress();
@@ -160,20 +159,14 @@ public:
 
     DBErrors LoadWallet(bool& fFirstRunRet);
 
-    int64_t GetColor0Balance() const
-    {
-        return color_admin_amount_;
-    }
-
     int64_t GetSendLicenseBalance(const type_Color& color) const
     {
         return license_amount_;
     }
 
-    bool CreateLicenseTransaction(const std::vector<CRecipient>& vecSend, const type_Color& send_color, CWalletTx& wtxNew,
-                                  string& strFailReason, bool &fComplete)
+    bool CreateLicenseTransaction(const std::vector<CRecipient>& vecSend, CWalletTx& wtxNew, string& strFailReason, bool &fComplete)
     {
-        return (send_color == color_ );
+        return (vecSend[0].mAmount.Color() == color_ );
     }
 
     inline bool CommitTransaction(CWalletTx &wtxNew, CReserveKey &reservekey)
@@ -219,11 +212,11 @@ public:
     CCoinsViewCache_UnitTest(CCoinsView *baseIn): CCoinsViewCache(baseIn), hash(ArithToUint256(arith_uint256(0))), txout()
     {
     }
-    inline void setUTXO(const uint256& hashIn, unsigned int indexIn, CAmount amount, CScript scriptPubKeyIn, type_Color color)
+    inline void setUTXO(const uint256& hashIn, unsigned int indexIn, CColorAmount mAmount, CScript scriptPubKeyIn)
     {
         hash = hashIn;
         index = indexIn;
-        txout = CTxOut(amount, scriptPubKeyIn, color);
+        txout = CTxOut(mAmount, scriptPubKeyIn);
     }
     bool GetAddrCoins(const std::string &addr, CTxOutMap &mapTxOut, bool fLicense) const
     {

@@ -21,6 +21,7 @@
 #include "primitives/transaction.h"
 #include "policy/licenseinfo.h"
 #include "utilstrencodings.h"
+#include "utilmoneystr.h"
 
 #include <stdint.h>
 
@@ -521,27 +522,30 @@ static void SendLicense(const CTxDestination& address, const type_Color& color, 
     CReserveKey reservekey(pwalletMain);
     std::string strError;
     vector<CRecipient> vecSend;
-    CRecipient recipient = {scriptPubKey, COIN, false};
+    CRecipient recipient = {scriptPubKey, CColorAmount(color, COIN), false};
     vecSend.push_back(recipient);
     bool fComplete = true;
-    if (!pwalletMain->CreateLicenseTransaction(vecSend, color, wtxNew, strError, fComplete)) {
+    if (!pwalletMain->CreateLicenseTransaction(vecSend, wtxNew, strError, fComplete)) {
         throw JSONRPCError(RPC_WALLET_ERROR, strError);
     }
     if (!pwalletMain->CommitTransaction(wtxNew, reservekey))
         throw JSONRPCError(RPC_WALLET_ERROR, "Error: The license transaction was rejected! Please read debug.info.");
 }
 
-static void SendMoneyFromFixedAddress(const string& strFromAddress, const CTxDestination& address, CAmount nValue, const type_Color& color, bool fSubtractFeeFromAmount, CWalletTx& wtxNew, const string& feeFromAddress = "")
+static void SendMoneyFromFixedAddress(const string& strFromAddress, const CTxDestination& address, CColorAmount mValue, bool fSubtractFeeFromAmount, CWalletTx& wtxNew, const string& feeFromAddress = "")
 {
-    CAmount curBalance = pwalletMain->GetColorBalanceFromFixedAddress(strFromAddress, color);
-
     // Check amount
-    if (nValue <= 0)
+    if (mValue.size() > 1)
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid amount size");
+    if (mValue.TotalValue() <= 0)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid amount");
+
+    type_Color color = mValue.Color();
     if (!IsValidColor(color))
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid color");
 
-    if (nValue > curBalance)
+    CAmount curBalance = pwalletMain->GetColorBalanceFromFixedAddress(strFromAddress, color);
+    if (mValue.Value() > curBalance)
         throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Insufficient funds from this address");
 
     // Parse Gcoin address
@@ -549,32 +553,33 @@ static void SendMoneyFromFixedAddress(const string& strFromAddress, const CTxDes
 
     // Create and send the transaction
     CReserveKey reservekey(pwalletMain);
-    CAmount nFeeRequired;
+    CColorAmount mFeeRequired;
     std::string strError;
     vector<CRecipient> vecSend;
     int nChangePosRet = -1;
-    CRecipient recipient = {scriptPubKey, nValue, fSubtractFeeFromAmount};
+    CRecipient recipient = {scriptPubKey, mValue, fSubtractFeeFromAmount};
     vecSend.push_back(recipient);
-    if (!pwalletMain->CreateTransaction(vecSend, color, wtxNew, reservekey, nFeeRequired, nChangePosRet, strError, NULL, strFromAddress, feeFromAddress)) {
-        if (!fSubtractFeeFromAmount && nValue + nFeeRequired > pwalletMain->GetColorBalanceFromFixedAddress(strFromAddress, color))
-            strError = strprintf("Error: This transaction requires a transaction fee of at least %s because of its amount, complexity, or use of recently received funds!", FormatMoney(nFeeRequired));
+    if (!pwalletMain->CreateTransaction(vecSend, wtxNew, reservekey, mFeeRequired, nChangePosRet, strError, NULL, strFromAddress, feeFromAddress)) {
+        if (!fSubtractFeeFromAmount && mValue.Value() + mFeeRequired.Value() > curBalance)
+            strError = strprintf("Error: This transaction requires a transaction fee of at least %s because of its amount, complexity, or use of recently received funds!", FormatMoney(mFeeRequired));
         throw JSONRPCError(RPC_WALLET_ERROR, strError);
     }
     if (!pwalletMain->CommitTransaction(wtxNew, reservekey))
         throw JSONRPCError(RPC_WALLET_ERROR, "Error: The transaction was rejected! Please read debug.info.");
 }
 
-static void SendMoney(const CTxDestination& address, CAmount nValue, const type_Color& color, bool fSubtractFeeFromAmount, CWalletTx& wtxNew)
+static void SendMoney(const CTxDestination& address, CColorAmount mValue, bool fSubtractFeeFromAmount, CWalletTx& wtxNew)
 {
+    type_Color color = mValue.Color();
     CAmount curBalance = pwalletMain->GetColorBalance(color);
 
     // Check amount
-    if (nValue <= 0)
+    if (mValue.Value() <= 0)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid amount");
-    if (!IsValidColor(color))
+    if (!IsValidColor(mValue.Color()))
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid color");
 
-    if (nValue > curBalance)
+    if (mValue.Value() > curBalance)
         throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Insufficient funds");
 
     // Parse Gcoin address
@@ -582,15 +587,15 @@ static void SendMoney(const CTxDestination& address, CAmount nValue, const type_
 
     // Create and send the transaction
     CReserveKey reservekey(pwalletMain);
-    CAmount nFeeRequired;
+    CColorAmount mFeeRequired;
     std::string strError;
     vector<CRecipient> vecSend;
     int nChangePosRet = -1;
-    CRecipient recipient = {scriptPubKey, nValue, fSubtractFeeFromAmount};
+    CRecipient recipient = {scriptPubKey, mValue, fSubtractFeeFromAmount};
     vecSend.push_back(recipient);
-    if (!pwalletMain->CreateTransaction(vecSend, color, wtxNew, reservekey, nFeeRequired, nChangePosRet, strError)) {
-        if (!fSubtractFeeFromAmount && nValue + nFeeRequired > pwalletMain->GetColorBalance(color))
-            strError = strprintf("Error: This transaction requires a transaction fee of at least %s because of its amount, complexity, or use of recently received funds!", FormatMoney(nFeeRequired));
+    if (!pwalletMain->CreateTransaction(vecSend, wtxNew, reservekey, mFeeRequired, nChangePosRet, strError)) {
+        if (!fSubtractFeeFromAmount && mValue.Value() + mFeeRequired.Value() > pwalletMain->GetColorBalance(color))
+            strError = strprintf("Error: This transaction requires a transaction fee of at least %s because of its amount, complexity, or use of recently received funds!", FormatMoney(mFeeRequired));
         throw JSONRPCError(RPC_WALLET_ERROR, strError);
     }
     if (!pwalletMain->CommitTransaction(wtxNew, reservekey))
@@ -982,22 +987,21 @@ Value sendtoaddress(const Array& params, bool fHelp)
             + HelpRequiringPassphrase() +
             "\nArguments:\n"
             "1. \"address\"             (string, required) The gcoin address to send to.\n"
-            "2. \"amount\"              (numeric, required) The amount in gcoin to send. eg 0.1\n"
-            "3. \"color\"               (numeric, required) The currency type (color) of the coin.\n"
-            "4. \"comment\"             (string, optional) A comment used to store what the transaction is for. \n"
+            "2. \"coloramount\"         (numeric, required) The colored amount in gcoin to send. eg 1:0.1 for 0.1 of color 1\n"
+            "3. \"comment\"             (string, optional) A comment used to store what the transaction is for. \n"
             "                             This is not part of the transaction, just kept in your wallet.\n"
-            "5. \"comment-to\"          (string, optional) A comment to store the name of the person or organization \n"
+            "4. \"comment-to\"          (string, optional) A comment to store the name of the person or organization \n"
             "                             to which you're sending the transaction. This is not part of the \n"
             "                             transaction, just kept in your wallet.\n"
-            "6. subtractfeefromamount   (boolean, optional, default=false) The fee will be deducted from the amount being sent.\n"
+            "5. subtractfeefromamount   (boolean, optional, default=false) The fee will be deducted from the amount being sent.\n"
             "                             The recipient will receive less gcoins than you enter in the amount field.\n"
             "\nResult:\n"
             "\"transactionid\"          (string) The transaction id.\n"
             "\nExamples:\n"
-            + HelpExampleCli("sendtoaddress", "\"1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd\" 0.1 1")
-            + HelpExampleCli("sendtoaddress", "\"1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd\" 0.1 1 \"donation\" \"seans outpost\"")
-            + HelpExampleCli("sendtoaddress", "\"1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd\" 0.1 1 \"\" \"\" true")
-            + HelpExampleRpc("sendtoaddress", "\"1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd\", 0.1, 1, \"donation\", \"seans outpost\"")
+            + HelpExampleCli("sendtoaddress", "\"1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd\" {\"1\":0.1}")
+            + HelpExampleCli("sendtoaddress", "\"1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd\" {\"1\":0.1} \"donation\" \"seans outpost\"")
+            + HelpExampleCli("sendtoaddress", "\"1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd\" {\"1\":0.1} \"\" \"\" true")
+            + HelpExampleRpc("sendtoaddress", "\"1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd\", {\"1\":0.1}, \"donation\", \"seans outpost\"")
         );
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
@@ -1007,25 +1011,28 @@ Value sendtoaddress(const Array& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Gcoin address");
 
     // Amount
-    CAmount nAmount = AmountFromValue(params[1]);
-
-    // Color
-    const type_Color color = ColorFromValue(params[2]);
+    Object amount = params[1].get_obj();
+    CColorAmount mAmount;
+    BOOST_FOREACH(const Pair& a, amount) {
+        type_Color color;
+        ParseColor(a.name_.c_str(), color);
+        mAmount += CColorAmount(color, AmountFromValue(a.value_));
+    }
 
     // Wallet comments
     CWalletTx wtx;
-    if (params.size() > 3 && params[3].type() != null_type && !params[3].get_str().empty())
+    if (params.size() > 2 && params[2].type() != null_type && !params[2].get_str().empty())
         wtx.mapValue["comment"] = params[3].get_str();
-    if (params.size() > 4 && params[4].type() != null_type && !params[4].get_str().empty())
-        wtx.mapValue["to"]      = params[4].get_str();
+    if (params.size() > 3 && params[3].type() != null_type && !params[3].get_str().empty())
+        wtx.mapValue["to"]      = params[3].get_str();
 
     bool fSubtractFeeFromAmount = false;
-    if (params.size() > 5)
-        fSubtractFeeFromAmount = params[5].get_bool();
+    if (params.size() > 4)
+        fSubtractFeeFromAmount = params[4].get_bool();
 
     EnsureWalletIsUnlocked();
 
-    SendMoney(address.Get(), nAmount, color, fSubtractFeeFromAmount, wtx);
+    SendMoney(address.Get(), mAmount, fSubtractFeeFromAmount, wtx);
 
     return wtx.GetHash().GetHex();
 }
@@ -1061,7 +1068,7 @@ Value listaddressgroupings(const Array& params, bool fHelp)
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
     Array jsonGroupings;
-    map<CTxDestination, colorAmount_t > balances = pwalletMain->GetAddressBalances();
+    map<CTxDestination, CColorAmount> balances = pwalletMain->GetAddressBalances();
     BOOST_FOREACH(set<CTxDestination> grouping, pwalletMain->GetAddressGroupings()) {
         Array jsonGrouping;
         BOOST_FOREACH(CTxDestination address, grouping) {
@@ -1180,7 +1187,7 @@ Value getreceivedbyaddress(const Array& params, bool fHelp)
         nMinDepth = params[1].get_int();
 
     // Tally
-    colorAmount_t colorAmount;
+    CColorAmount mAmount;
     for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it) {
         const CWalletTx& wtx = (*it).second;
         if (wtx.IsCoinBase() || !CheckFinalTx(wtx))
@@ -1189,13 +1196,11 @@ Value getreceivedbyaddress(const Array& params, bool fHelp)
         BOOST_FOREACH(const CTxOut& txout, wtx.vout)
             if (txout.scriptPubKey == scriptPubKey)
                 if (wtx.GetDepthInMainChain() >= nMinDepth) {
-                    if (!colorAmount.count(txout.color))
-                        colorAmount[txout.color] = 0;
-                    colorAmount[txout.color] += txout.nValue;
+                    mAmount += txout.mValue;
                 }
     }
 
-    return ValueFromAmount(colorAmount);
+    return ValueFromAmount(mAmount);
 }
 
 
@@ -1239,7 +1244,7 @@ Value getreceivedbyaccount(const Array& params, bool fHelp)
     set<CTxDestination> setAddress = pwalletMain->GetAccountAddresses(strAccount);
 
     // Tally
-    colorAmount_t colorAmount;
+    CColorAmount mAmount;
     for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it) {
         const CWalletTx& wtx = (*it).second;
         if (wtx.IsCoinBase() || !CheckFinalTx(wtx))
@@ -1249,73 +1254,47 @@ Value getreceivedbyaccount(const Array& params, bool fHelp)
             CTxDestination address;
             if (ExtractDestination(txout.scriptPubKey, address) && IsMine(*pwalletMain, address) && setAddress.count(address))
                 if (wtx.GetDepthInMainChain() >= nMinDepth) {
-                    if (!colorAmount.count(txout.color))
-                        colorAmount[txout.color] = 0;
-                    colorAmount[txout.color] += txout.nValue;
+                    mAmount += txout.mValue;
                 }
         }
     }
 
-    return ValueFromAmount(colorAmount);
+    return ValueFromAmount(mAmount);
 }
-colorAmount_t GetAccountBalance(CWalletDB& walletdb, const string& strAccount, int nMinDepth, const isminefilter& filter, colorAmount_t& color_amount)
+CColorAmount GetAccountBalance(CWalletDB& walletdb, const string& strAccount, int nMinDepth, const isminefilter& filter)
 {
+    CColorAmount mBalance;
+
     // Tally wallet transactions
     for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it) {
         const CWalletTx& wtx = (*it).second;
         if (!CheckFinalTx(wtx) || wtx.GetBlocksToMaturity() > 0 || wtx.GetDepthInMainChain() < 0)
             continue;
 
-        colorAmount_t nReceived, nSent;
-        wtx.GetAccountAmounts(strAccount, nReceived, nSent, filter);
+        CColorAmount mReceived, mSent, mFee;
+        wtx.GetAccountAmounts(strAccount, mReceived, mSent, mFee, filter);
 
-        if (nReceived.size() != 0 && wtx.GetDepthInMainChain() >= nMinDepth) {
-            for (colorAmount_t::const_iterator it = nReceived.begin(); it != nReceived.end(); it++) {
-                if (color_amount.count(it->first) == 0)
-                    color_amount[it->first] = 0;
-                color_amount[it->first] += it->second;
-            }
-        }
-        for (colorAmount_t::const_iterator it = nSent.begin(); it != nSent.end(); it++) {
-            if (color_amount.count(it->first) != 0)
-                color_amount[it->first] -= it->second;
-        }
+        if (mReceived.size() != 0 && wtx.GetDepthInMainChain() >= nMinDepth)
+            mBalance += mReceived;
+        mBalance -= mSent + mFee;
     }
 
     // Tally internal accounting entries
-    return walletdb.GetAccountCreditDebit(strAccount);
+    mBalance += walletdb.GetAccountCreditDebit(strAccount);
+
+    return mBalance;
 }
 
-colorAmount_t GetAccountBalance(const string& strAccount, int nMinDepth, const isminefilter& filter, colorAmount_t& color_amount)
+CColorAmount GetAccountBalance(const string& strAccount, int nMinDepth, const isminefilter& filter)
 {
     CWalletDB walletdb(pwalletMain->strWalletFile);
-    return GetAccountBalance(walletdb, strAccount, nMinDepth, filter, color_amount);
+    return GetAccountBalance(walletdb, strAccount, nMinDepth, filter);
 }
 
 CAmount GetAccountColorBalance(CWalletDB& walletdb, const string& strAccount, const type_Color& color, int nMinDepth, const isminefilter& filter)
 {
-    CAmount nBalance = 0;
-
-    // Tally wallet transactions
-    for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it) {
-        const CWalletTx& wtx = (*it).second;
-        if (!IsFinalTx(wtx, chainActive.Height(), GetAdjustedTime()) || wtx.GetBlocksToMaturity() > 0 || wtx.GetDepthInMainChain() < 0 )
-            continue;
-
-        colorAmount_t nReceived, nSent;
-        wtx.GetAccountAmounts(strAccount, nReceived, nSent, filter);
-
-        if (wtx.GetDepthInMainChain() >= nMinDepth && nReceived.count(color) != 0)
-            nBalance += nReceived[color];
-        if (nSent.count(color) != 0)
-            nBalance -= nSent[color];
-    }
-
-    // Tally internal accounting entries
-    if (walletdb.GetAccountCreditDebit(strAccount).count(color))
-        nBalance += walletdb.GetAccountCreditDebit(strAccount)[color];
-
-    return nBalance;
+    CColorAmount balances = GetAccountBalance(walletdb, strAccount, nMinDepth, filter);
+    return balances[color];
 }
 
 CAmount GetAccountColorBalance(const string& strAccount, const type_Color& color, int nMinDepth, const isminefilter& filter)
@@ -1356,11 +1335,11 @@ Value getbalance(const Array& params, bool fHelp)
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
-    colorAmount_t color_amount;
+    CColorAmount mAmount;
 
     if (params.size() == 0) {
-        pwalletMain->GetBalance(color_amount);
-        return ValueFromAmount(color_amount);
+        mAmount = pwalletMain->GetBalance();
+        return ValueFromAmount(mAmount);
     }
 
     int nMinDepth = 1;
@@ -1380,41 +1359,30 @@ Value getbalance(const Array& params, bool fHelp)
             if (!CheckFinalTx(wtx) || wtx.GetBlocksToMaturity() > 0 || wtx.GetDepthInMainChain() < 0)
                 continue;
 
-            CAmount allFee;
+            CColorAmount allFee;
             string strSentAccount;
             list<COutputEntry> listReceived;
             list<COutputEntry> listSent;
             wtx.GetAmounts(listReceived, listSent, allFee, strSentAccount, filter);
             if (wtx.GetDepthInMainChain() >= nMinDepth) {
                 BOOST_FOREACH(const COutputEntry& r, listReceived) {
-                    if (color_amount.count(r.color) == 0)
-                        color_amount[r.color] = 0;
-
-                    color_amount[r.color] += r.amount;
+                    mAmount += r.mAmount;
                 }
             }
             BOOST_FOREACH(const COutputEntry& s, listSent) {
-                if (color_amount.count(s.color) == 0) // This should not happen.
-                    color_amount[s.color] = 0;
-
-                color_amount[s.color] -= s.amount;
+                mAmount -= s.mAmount;
             }
-            /*
-            if (color_amount.count(wtx.color) == 0) // This should not happen.
-                color_amount[wtx.color] = 0;
-            */
-
-            //color_amount[wtx.color] -= allFee;
+            //mAmount -= allFee;
         }
 
-        return ValueFromAmount(color_amount);
+        return ValueFromAmount(mAmount);
     }
 
     string strAccount = AccountFromValue(params[0]);
 
-    GetAccountBalance(strAccount, nMinDepth, filter, color_amount);
+    mAmount = GetAccountBalance(strAccount, nMinDepth, filter);
 
-    return ValueFromAmount(color_amount);
+    return ValueFromAmount(mAmount);
 }
 
 Value getcolorbalance(const Array& params, bool fHelp)
@@ -1465,28 +1433,26 @@ Value getcolorbalance(const Array& params, bool fHelp)
         // (GetColorBalance() sums up all unspent TxOuts)
         // getcolorbalance and "getcolorbalance * 1 true" should return the same number
         // getcolorbalance and getcolorbalance '*' 0 should return the same number
-        CAmount nBalance = 0;
+        CColorAmount mBalance;
         for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it) {
             const CWalletTx& wtx = (*it).second;
             if (!CheckFinalTx(wtx) || wtx.GetBlocksToMaturity() > 0 || wtx.GetDepthInMainChain() < 0)
                 continue;
 
-            CAmount allFee;
+            CColorAmount allFee;
             string strSentAccount;
             list<COutputEntry> listReceived;
             list<COutputEntry> listSent;
             wtx.GetAmounts(listReceived, listSent, allFee, strSentAccount, filter);
             if (wtx.GetDepthInMainChain() >= nMinDepth) {
                 BOOST_FOREACH(const COutputEntry& r, listReceived)
-                    if (r.color == color)
-                        nBalance += r.amount;
+                    mBalance += r.mAmount;
             }
             BOOST_FOREACH(const COutputEntry& s, listSent)
-                if (s.color == color)
-                    nBalance -= s.amount;
-            nBalance -= allFee;
+                mBalance -= s.mAmount;
+            mBalance -= allFee;
         }
-        return ValueFromAmount(nBalance);
+        return ValueFromAmount(mBalance[color]);
     }
 
     string strAccount = AccountFromValue(params[1]);
@@ -1517,7 +1483,7 @@ Value getaddressbalance(const Array& params, bool fHelp)
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
-    colorAmount_t color_amount;
+    CColorAmount mAmount;
 
     string strAddress = params[0].get_str();
     CBitcoinAddress address(strAddress);
@@ -1529,9 +1495,9 @@ Value getaddressbalance(const Array& params, bool fHelp)
     if (!address.IsValid())
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Gcoin address");
 
-    pwalletMain->GetAddressBalance(strAddress, color_amount, nMinDepth);
+    mAmount = pwalletMain->GetAddressBalance(strAddress, nMinDepth);
 
-    return ValueFromAmount(color_amount);
+    return ValueFromAmount(mAmount);
 }
 
 Value getunconfirmedbalance(const Array &params, bool fHelp)
@@ -1547,9 +1513,9 @@ Value getunconfirmedbalance(const Array &params, bool fHelp)
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
-    colorAmount_t color_amount;
-    pwalletMain->GetUnconfirmedBalance(color_amount);
-    return ValueFromAmount(color_amount);
+    CColorAmount mAmount;
+    mAmount = pwalletMain->GetUnconfirmedBalance();
+    return ValueFromAmount(mAmount);
 }
 
 Value getunconfirmedcolorbalance(const Array &params, bool fHelp)
@@ -1722,7 +1688,7 @@ Value movecmd(const Array& params, bool fHelp)
     CAccountingEntry debit;
     debit.nOrderPos = pwalletMain->IncOrderPosNext(&walletdb);
     debit.strAccount = strFrom;
-    debit.nCreditDebit.insert(make_pair(color, -nAmount));
+    debit.mCreditDebit += CColorAmount(color, -nAmount);
     debit.nTime = nNow;
     debit.strOtherAccount = strTo;
     debit.strComment = strComment;
@@ -1732,7 +1698,7 @@ Value movecmd(const Array& params, bool fHelp)
     CAccountingEntry credit;
     credit.nOrderPos = pwalletMain->IncOrderPosNext(&walletdb);
     credit.strAccount = strTo;
-    credit.nCreditDebit.insert(make_pair(color, nAmount));
+    credit.mCreditDebit += CColorAmount(color, nAmount);
     credit.nTime = nNow;
     credit.strOtherAccount = strFrom;
     credit.strComment = strComment;
@@ -1750,7 +1716,7 @@ Value sendfrom(const Array& params, bool fHelp)
     if (!EnsureWalletIsAvailable(fHelp))
         return Value::null;
 
-    if (fHelp || params.size() < 4 || params.size() > 6)
+    if (fHelp || params.size() < 3 || params.size() > 5)
         throw runtime_error(
             "sendfrom \"fromaddress\" \"toaddress\" amount color ( \"comment\" \"comment-to\" )\n"
             "\nSent an amount from a fixed address to a gcoin address.\n"
@@ -1759,22 +1725,21 @@ Value sendfrom(const Array& params, bool fHelp)
             "\nArguments:\n"
             "1. \"fromaddress\"     (string, required) The gcoin address to send funds from.\n"
             "2. \"toaddress\"       (string, required) The gcoin address to send funds to.\n"
-            "3. amount              (numeric, required) The amount in gcoin. (transaction fee is added on top).\n"
-            "4. color               (numeric, required) The currency type (color) of the coin.\n"
-            "5. \"comment\"         (string, optional) A comment used to store what the transaction is for. \n"
+            "3. \"coloramount\"     (numeric, required) The colored amount in gcoin. (transaction fee is added on top).\n"
+            "4. \"comment\"         (string, optional) A comment used to store what the transaction is for. \n"
             "                                     This is not part of the transaction, just kept in your wallet.\n"
-            "6. \"comment-to\"      (string, optional) An optional comment to store the name of the person or organization \n"
+            "5. \"comment-to\"      (string, optional) An optional comment to store the name of the person or organization \n"
             "                                     to which you're sending the transaction. This is not part of the transaction, \n"
             "                                     it is just kept in your wallet.\n"
             "\nResult:\n"
             "\"transactionid\"        (string) The transaction id.\n"
             "\nExamples:\n"
             "\nSend 2 gcoin color 1 from the address to the address, must have at least 1 confirmation\n"
-            + HelpExampleCli("sendfrom", "\"3O89Awopq5POaUAXq2q1IjiASC71Zzzzsa\" \"1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd\" 2 1") +
+            + HelpExampleCli("sendfrom", "\"3O89Awopq5POaUAXq2q1IjiASC71Zzzzsa\" \"1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd\" {\"1\":2}") +
             "\nSend 2 gcoin color 1 from the address to the given address\n"
-            + HelpExampleCli("sendfrom", "\"3O89Awopq5POaUAXq2q1IjiASC71Zzzzsa\" \"1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd\" 2 1\"donation\" \"seans outpost\"") +
+            + HelpExampleCli("sendfrom", "\"3O89Awopq5POaUAXq2q1IjiASC71Zzzzsa\" \"1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd\" {\"1\":2}\"donation\" \"seans outpost\"") +
             "\nAs a json rpc call\n"
-            + HelpExampleRpc("sendfrom", "\"3O89Awopq5POaUAXq2q1IjiASC71Zzzzsa\", \"1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd\", 2, 1, \"donation\", \"seans outpost\"")
+            + HelpExampleRpc("sendfrom", "\"3O89Awopq5POaUAXq2q1IjiASC71Zzzzsa\", \"1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd\", {\"1\":2}, \"donation\", \"seans outpost\"")
         );
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
@@ -1789,18 +1754,23 @@ Value sendfrom(const Array& params, bool fHelp)
     if (!address.IsValid())
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid to address");
 
-    CAmount nAmount = AmountFromValue(params[2]);
-    const type_Color color = ColorFromValue(params[3]);
+    Object amount = params[2].get_obj();
+    CColorAmount mAmount;
+    BOOST_FOREACH(const Pair& a, amount) {
+        type_Color color;
+        ParseColor(a.name_.c_str(), color);
+        mAmount += CColorAmount(color, AmountFromValue(a.value_));
+    }
 
     CWalletTx wtx;
-    if (params.size() > 4 && params[4].type() != null_type && !params[4].get_str().empty())
-        wtx.mapValue["comment"] = params[4].get_str();
-    if (params.size() > 5 && params[5].type() != null_type && !params[5].get_str().empty())
-        wtx.mapValue["to"]      = params[5].get_str();
+    if (params.size() > 3 && params[3].type() != null_type && !params[4].get_str().empty())
+        wtx.mapValue["comment"] = params[3].get_str();
+    if (params.size() > 4 && params[4].type() != null_type && !params[5].get_str().empty())
+        wtx.mapValue["to"]      = params[4].get_str();
 
     EnsureWalletIsUnlocked();
 
-    SendMoneyFromFixedAddress(strFromAddress, address.Get(), nAmount, color, false, wtx);
+    SendMoneyFromFixedAddress(strFromAddress, address.Get(), mAmount, false, wtx);
 
     return wtx.GetHash().GetHex();
 }
@@ -1866,7 +1836,7 @@ Value sendfromfeeaddress(const Array& params, bool fHelp)
 
     EnsureWalletIsUnlocked();
 
-    SendMoneyFromFixedAddress(strFromAddress, address.Get(), nAmount, color, false, wtx, feeFromAddress);
+    SendMoneyFromFixedAddress(strFromAddress, address.Get(), CColorAmount(color, nAmount), false, wtx, feeFromAddress);
 
     return wtx.GetHash().GetHex();
 }
@@ -1936,7 +1906,7 @@ Value sendmany(const Array& params, bool fHelp)
     set<CBitcoinAddress> setAddress;
     vector<CRecipient> vecSend;
 
-    CAmount totalAmount = 0;
+    CColorAmount totalAmount;
     BOOST_FOREACH(const Pair& s, sendTo) {
         CBitcoinAddress address(s.name_);
         if (!address.IsValid())
@@ -1947,15 +1917,15 @@ Value sendmany(const Array& params, bool fHelp)
         setAddress.insert(address);
 
         CScript scriptPubKey = GetScriptForDestination(address.Get());
-        CAmount nAmount = AmountFromValue(s.value_);
-        totalAmount += nAmount;
+        CColorAmount mAmount(color, AmountFromValue(s.value_));
+        totalAmount += mAmount;
 
         bool fSubtractFeeFromAmount = false;
         BOOST_FOREACH(const Value& addr, subtractFeeFromAmount)
             if (addr.get_str() == s.name_)
                 fSubtractFeeFromAmount = true;
 
-        CRecipient recipient = {scriptPubKey, nAmount, fSubtractFeeFromAmount};
+        CRecipient recipient = {scriptPubKey, mAmount, fSubtractFeeFromAmount};
         vecSend.push_back(recipient);
     }
 
@@ -1963,15 +1933,15 @@ Value sendmany(const Array& params, bool fHelp)
 
     // Check funds
     CAmount nBalance = GetAccountColorBalance(strAccount, color, nMinDepth, ISMINE_SPENDABLE);
-    if (totalAmount > nBalance)
+    if (totalAmount.TotalValue() > nBalance)
         throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Account has insufficient funds");
 
     // Send
     CReserveKey keyChange(pwalletMain);
-    CAmount nFeeRequired = 0;
+    CColorAmount mFeeRequired;
     int nChangePosRet = -1;
     string strFailReason;
-    bool fCreated = pwalletMain->CreateTransaction(vecSend, color, wtx, keyChange, nFeeRequired, nChangePosRet, strFailReason);
+    bool fCreated = pwalletMain->CreateTransaction(vecSend, wtx, keyChange, mFeeRequired, nChangePosRet, strFailReason);
     if (!fCreated)
         throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, strFailReason);
     if (!pwalletMain->CommitTransaction(wtx, keyChange))
@@ -2034,7 +2004,7 @@ Value addmultisigaddress(const Array& params, bool fHelp)
 
 struct tallyitem
 {
-    colorAmount_t colorAmount;
+    CColorAmount mAmount;
     int nConf;
     vector<uint256> txids;
     bool fIsWatchonly;
@@ -2084,9 +2054,7 @@ Value ListReceived(const Array& params, bool fByAccounts)
                 continue;
 
             tallyitem& item = mapTally[address];
-            if (!item.colorAmount.count(txout.color))
-                item.colorAmount[txout.color] = 0;
-            item.colorAmount[txout.color] += txout.nValue;
+            item.mAmount += txout.mValue;
             item.nConf = std::min(item.nConf, nDepth);
             item.txids.push_back(wtx.GetHash());
             if (mine & ISMINE_WATCH_ONLY)
@@ -2104,22 +2072,18 @@ Value ListReceived(const Array& params, bool fByAccounts)
         if (it == mapTally.end() && !fIncludeEmpty)
             continue;
 
-        colorAmount_t colorAmount;
+        CColorAmount mAmount;
         int nConf = std::numeric_limits<int>::max();
         bool fIsWatchonly = false;
         if (it != mapTally.end()) {
-            colorAmount = (*it).second.colorAmount;
+            mAmount = (*it).second.mAmount;
             nConf = (*it).second.nConf;
             fIsWatchonly = (*it).second.fIsWatchonly;
         }
 
         if (fByAccounts) {
             tallyitem& item = mapAccountTally[strAccount];
-            for (colorAmount_t::iterator itcA = colorAmount.begin(); itcA != colorAmount.end(); itcA++) {
-                if (!item.colorAmount.count((*itcA).first))
-                    item.colorAmount[(*itcA).first] = 0;
-                item.colorAmount[(*itcA).first] += (*itcA).second;
-            }
+            item.mAmount += mAmount;
             item.nConf = std::min(item.nConf, nConf);
             item.fIsWatchonly = fIsWatchonly;
         } else {
@@ -2128,7 +2092,7 @@ Value ListReceived(const Array& params, bool fByAccounts)
                 obj.push_back(Pair("involvesWatchonly", true));
             obj.push_back(Pair("address",       address.ToString()));
             obj.push_back(Pair("account",       strAccount));
-            obj.push_back(Pair("amount",        ValueFromAmount(colorAmount)));
+            obj.push_back(Pair("amount",        ValueFromAmount(mAmount)));
             obj.push_back(Pair("confirmations", (nConf == std::numeric_limits<int>::max() ? 0 : nConf)));
             Array transactions;
             if (it != mapTally.end()) {
@@ -2144,13 +2108,13 @@ Value ListReceived(const Array& params, bool fByAccounts)
 
     if (fByAccounts) {
         for (map<string, tallyitem>::iterator it = mapAccountTally.begin(); it != mapAccountTally.end(); ++it) {
-            colorAmount_t colorAmount = (*it).second.colorAmount;
+            CColorAmount mAmount = (*it).second.mAmount;
             int nConf = (*it).second.nConf;
             Object obj;
             if ((*it).second.fIsWatchonly)
                 obj.push_back(Pair("involvesWatchonly", true));
             obj.push_back(Pair("account",       (*it).first));
-            obj.push_back(Pair("amount",        ValueFromAmount(colorAmount)));
+            obj.push_back(Pair("amount",        ValueFromAmount(mAmount)));
             obj.push_back(Pair("confirmations", (nConf == std::numeric_limits<int>::max() ? 0 : nConf)));
             ret.push_back(obj);
         }
@@ -2247,18 +2211,18 @@ static void MaybePushAddress(Object & entry, const CTxDestination &dest)
 
 void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDepth, bool fLong, Array& ret, const isminefilter& filter)
 {
-    CAmount nFee;
+    CColorAmount mFee;
     string strSentAccount;
     list<COutputEntry> listReceived;
     list<COutputEntry> listSent;
 
-    wtx.GetAmounts(listReceived, listSent, nFee, strSentAccount, filter);
+    wtx.GetAmounts(listReceived, listSent, mFee, strSentAccount, filter);
 
     bool fAllAccounts = (strAccount == string("*"));
     bool involvesWatchonly = wtx.IsFromMe(ISMINE_WATCH_ONLY);
 
     // Sent
-    if ((!listSent.empty() || nFee != 0) && (fAllAccounts || strAccount == strSentAccount)) {
+    if ((!listSent.empty() || mFee.Value() != 0) && (fAllAccounts || strAccount == strSentAccount)) {
         BOOST_FOREACH(const COutputEntry& s, listSent) {
             Object entry;
             if (involvesWatchonly || (::IsMine(*pwalletMain, s.destination) & ISMINE_WATCH_ONLY))
@@ -2266,9 +2230,9 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
             entry.push_back(Pair("account", strSentAccount));
             MaybePushAddress(entry, s.destination);
             entry.push_back(Pair("category", "send"));
-            entry.push_back(Pair("amount", ValueFromAmount(-s.amount)));
+            entry.push_back(Pair("amount", ValueFromAmount(-s.mAmount)));
             entry.push_back(Pair("vout", s.vout));
-            entry.push_back(Pair("fee", ValueFromAmount(-nFee)));
+            entry.push_back(Pair("fee", ValueFromAmount(-mFee)));
             if (fLong)
                 WalletTxToJSON(wtx, entry);
             ret.push_back(entry);
@@ -2297,7 +2261,7 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
                 } else {
                     entry.push_back(Pair("category", "receive"));
                 }
-                entry.push_back(Pair("amount", ValueFromAmount(r.amount)));
+                entry.push_back(Pair("amount", ValueFromAmount(r.mAmount)));
                 entry.push_back(Pair("vout", r.vout));
                 if (fLong)
                     WalletTxToJSON(wtx, entry);
@@ -2316,7 +2280,7 @@ void AcentryToJSON(const CAccountingEntry& acentry, const string& strAccount, Ar
         entry.push_back(Pair("account", acentry.strAccount));
         entry.push_back(Pair("category", "move"));
         entry.push_back(Pair("time", acentry.nTime));
-        entry.push_back(Pair("amount", ValueFromAmount(acentry.nCreditDebit)));
+        entry.push_back(Pair("amount", ValueFromAmount(acentry.mCreditDebit)));
         entry.push_back(Pair("otheraccount", acentry.strOtherAccount));
         entry.push_back(Pair("comment", acentry.strComment));
         ret.push_back(entry);
@@ -2630,38 +2594,36 @@ Value listaccounts(const Array& params, bool fHelp)
         if (params[1].get_bool())
             includeWatchonly = includeWatchonly | ISMINE_WATCH_ONLY;
 
-    map<string, colorAmount_t > mapAccountBalances;
+    map<string, CColorAmount> mapAccountBalances;
     BOOST_FOREACH(const PAIRTYPE(CTxDestination, CAddressBookData)& entry, pwalletMain->mapAddressBook) {
         if (IsMine(*pwalletMain, entry.first) & includeWatchonly) // This address belongs to me
-            mapAccountBalances[entry.second.name] = colorAmount_t();
+            mapAccountBalances[entry.second.name] = CColorAmount();
     }
 
     for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it) {
         const CWalletTx& wtx = (*it).second;
-        CAmount nFee;
+        CColorAmount mFee;
         string strSentAccount;
         list<COutputEntry> listReceived;
         list<COutputEntry> listSent;
         int nDepth = wtx.GetDepthInMainChain();
         if (wtx.GetBlocksToMaturity() > 0 || nDepth < 0)
             continue;
-        wtx.GetAmounts(listReceived, listSent, nFee, strSentAccount, includeWatchonly);
+        wtx.GetAmounts(listReceived, listSent, mFee, strSentAccount, includeWatchonly);
 
         BOOST_FOREACH(const COutputEntry& s, listSent) {
-            if (mapAccountBalances.count(strSentAccount) == 0 || mapAccountBalances[strSentAccount].count(s.color) == 0)
-                mapAccountBalances[strSentAccount][s.color] = 0;
-            mapAccountBalances[strSentAccount][s.color] -= s.amount;
+            if (mapAccountBalances.count(strSentAccount) == 0)
+                mapAccountBalances[strSentAccount] = CColorAmount();
+            mapAccountBalances[strSentAccount] -= s.mAmount;
         }
         if (nDepth >= nMinDepth) {
             BOOST_FOREACH(const COutputEntry& r, listReceived) {
                 if (pwalletMain->mapAddressBook.count(r.destination))
-                    mapAccountBalances[pwalletMain->mapAddressBook[r.destination].name][r.color] += r.amount;
+                    mapAccountBalances[pwalletMain->mapAddressBook[r.destination].name] += r.mAmount;
                 else {
-
-                    if (mapAccountBalances.count("") == 0 || mapAccountBalances[""].count(r.color) == 0)
-                        mapAccountBalances[""][r.color] = 0;
-
-                    mapAccountBalances[""][r.color] += r.amount;
+                    if (mapAccountBalances.count("") == 0)
+                        mapAccountBalances[""] = CColorAmount();
+                    mapAccountBalances[""] += r.mAmount;
                 }
             }
         }
@@ -2675,16 +2637,15 @@ Value listaccounts(const Array& params, bool fHelp)
         // if we can't get wallet tx or account info
         BOOST_FOREACH(const CTxOut txout, pwtx->vout) {
             if (pwtx != 0 && entry != 0) {
-                if (mapAccountBalances.count(entry->strAccount) == 0 || mapAccountBalances[entry->strAccount].count(txout.color) == 0)
-                    mapAccountBalances[entry->strAccount][txout.color] = 0;
-                if (entry->nCreditDebit.count(txout.color))
-                    mapAccountBalances[entry->strAccount][txout.color] += entry->nCreditDebit[txout.color];
+                if (mapAccountBalances.count(entry->strAccount) == 0)
+                    mapAccountBalances[entry->strAccount] = CColorAmount();
+                mapAccountBalances[entry->strAccount] += entry->mCreditDebit;
             }
         }
     }
 
     Object ret;
-    for (map<string, colorAmount_t >::const_iterator it1 = mapAccountBalances.begin(); it1 != mapAccountBalances.end(); it1++)
+    for (map<string, CColorAmount>::const_iterator it1 = mapAccountBalances.begin(); it1 != mapAccountBalances.end(); it1++)
         ret.push_back(Pair((*it1).first, ValueFromAmount((*it1).second)));
     return ret;
 }
@@ -2833,14 +2794,14 @@ Value gettransaction(const Array& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid or non-wallet transaction id");
     const CWalletTx& wtx = pwalletMain->mapWallet[hash];
 
-    CAmount nCredit = wtx.GetCredit(filter);
-    CAmount nDebit = wtx.GetDebit(filter);
-    CAmount nNet = nCredit - nDebit;
-    CAmount nFee = (wtx.IsFromMe(filter) ? wtx.GetValueOut() - nDebit : 0);
+    CColorAmount mCredit = wtx.GetCredit(filter);
+    CColorAmount mDebit = wtx.GetDebit(filter);
+    CColorAmount mNet = mCredit - mDebit;
+    CColorAmount mFee = (wtx.IsFromMe(filter) ? wtx.GetValueOut() - mDebit : CColorAmount());
 
-    entry.push_back(Pair("amount", ValueFromAmount(nNet - nFee)));
+    entry.push_back(Pair("amount", ValueFromAmount(mNet - mFee)));
     if (wtx.IsFromMe(filter))
-        entry.push_back(Pair("fee", ValueFromAmount(nFee)));
+        entry.push_back(Pair("fee", ValueFromAmount(mFee)));
 
     WalletTxToJSON(wtx, entry);
 
@@ -3348,14 +3309,14 @@ Value getwalletinfo(const Array& params, bool fHelp)
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
     Object obj;
-    colorAmount_t color_amount;
+    CColorAmount mAmount;
 
     std::set<CKeyID> keyids;
     pwalletMain->GetKeys(keyids);
 
     obj.push_back(Pair("walletversion", pwalletMain->GetVersion()));
-    pwalletMain->GetBalance(color_amount);
-    obj.push_back(Pair("balance",       ValueFromAmount(color_amount)));
+    mAmount = pwalletMain->GetBalance();
+    obj.push_back(Pair("balance",       ValueFromAmount(mAmount)));
     obj.push_back(Pair("txcount",       (int)pwalletMain->mapWallet.size()));
     obj.push_back(Pair("keypoololdest", pwalletMain->GetOldestKeyPoolTime()));
     obj.push_back(Pair("keystoresize",   (int)keyids.size()));
@@ -3409,9 +3370,8 @@ Value mint(const Array& params, bool fHelp)
             + HelpExampleRpc("mint", "\"10\", 5, \"donation\", \"seans outpost\"")
         );
     // Amount
-    CAmount nAmount = params[0].get_int64();
-    const type_Color color = ColorFromValue(params[1]);
-    if (color == DEFAULT_ADMIN_COLOR)
+    const CColorAmount mAmount(ColorFromValue(params[1]), params[0].get_int64());
+    if (mAmount.Color() == DEFAULT_ADMIN_COLOR)
         throw JSONRPCError(RPC_INVALID_PARAMETER, string("Please use mintforlicense or mintforminer for DEFAULT_ADMIN_COLOR coin"));
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
@@ -3419,7 +3379,7 @@ Value mint(const Array& params, bool fHelp)
     // Wallet comments
     CWalletTx wtx;
     EnsureWalletIsUnlocked();
-    string strError = pwalletMain->MintMoney(nAmount, color, wtx);
+    string strError = pwalletMain->MintMoney(mAmount, wtx);
     if (strError != "")
         throw JSONRPCError(RPC_WALLET_ERROR, strError);
     return wtx.GetHash().GetHex();
@@ -3443,7 +3403,7 @@ Value mintforlicense(const Array& params, bool fHelp)
 
     CWalletTx wtx;
     EnsureWalletIsUnlocked();
-    string strError = pwalletMain->MintMoney(1, DEFAULT_ADMIN_COLOR, wtx, LICENSE);
+    string strError = pwalletMain->MintMoney(CColorAmount(DEFAULT_ADMIN_COLOR, 1), wtx, LICENSE);
     if (strError != "")
         throw JSONRPCError(RPC_WALLET_ERROR, strError);
     return wtx.GetHash().GetHex();
@@ -3467,7 +3427,7 @@ Value mintforminer(const Array& params, bool fHelp)
 
     CWalletTx wtx;
     EnsureWalletIsUnlocked();
-    string strError = pwalletMain->MintMoney(1, DEFAULT_ADMIN_COLOR, wtx, MINER);
+    string strError = pwalletMain->MintMoney(CColorAmount(DEFAULT_ADMIN_COLOR, 1), wtx, MINER);
     if (strError != "")
         throw JSONRPCError(RPC_WALLET_ERROR, strError);
     return wtx.GetHash().GetHex();

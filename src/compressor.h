@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_COMPRESSOR_H
-#define BITCOIN_COMPRESSOR_H
+#ifndef GCOIN_COMPRESSOR_H
+#define GCOIN_COMPRESSOR_H
 
 #include "primitives/transaction.h"
 #include "script/script.h"
@@ -108,17 +108,23 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
         if (!ser_action.ForRead()) {
-            uint64_t nVal = CompressAmount(txout.nValue);
+            uint64_t nVal = CompressAmount(txout.mValue.Value());
             READWRITE(VARINT(nVal));
+            CScriptCompressor cscript(REF(txout.scriptPubKey));
+            READWRITE(cscript);
+            type_Color color = txout.mValue.Color();
+            READWRITE(color);
         } else {
             uint64_t nVal = 0;
             READWRITE(VARINT(nVal));
-            txout.nValue = DecompressAmount(nVal);
+            CAmount value = DecompressAmount(nVal);
+            CScriptCompressor cscript(REF(txout.scriptPubKey));
+            READWRITE(cscript);
+            type_Color color;
+            READWRITE(color);
+            txout.mValue.init(color, value);
         }
-        CScriptCompressor cscript(REF(txout.scriptPubKey));
-        READWRITE(cscript);
-        READWRITE(txout.color);
     }
 };
 
-#endif // BITCOIN_COMPRESSOR_H
+#endif // GCOIN_COMPRESSOR_H

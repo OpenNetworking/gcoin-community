@@ -53,8 +53,8 @@ struct CreateLicenseHandlerCheckValidFixture : public LicenseHandlerFixture
         CreateTransaction(mint_admin_hash, MINT);
         CreateTransaction(license_hash, LICENSE);
         CreateTransaction(out_hash, LICENSE);
-        ConnectTransactions(mint_admin_hash, license_hash, COIN, ConsensusAddressForLicense, DEFAULT_ADMIN_COLOR);
-        ConnectTransactions(license_hash, out_hash, COIN, issuer, color, info.EncodeInfo());
+        ConnectTransactions(mint_admin_hash, license_hash, CColorAmount(DEFAULT_ADMIN_COLOR, COIN), ConsensusAddressForLicense);
+        ConnectTransactions(license_hash, out_hash, CColorAmount(color, COIN), issuer, info.EncodeInfo());
     }
 
     ~CreateLicenseHandlerCheckValidFixture()
@@ -108,7 +108,7 @@ BOOST_FIXTURE_TEST_CASE(CreateLicenseHandlerCheckValidExistedColor, CreateLicens
 
 BOOST_FIXTURE_TEST_CASE(CreateLicenseHandlerCheckValidInvalidInfo, CreateLicenseHandlerCheckValidFixture)
 {
-    ConnectTransactions(license_hash, out_hash, COIN, issuer, color, "fake_info");
+    ConnectTransactions(license_hash, out_hash, CColorAmount(color, COIN), issuer, "fake_info");
     CheckFalse(100, __func__);
 }
 
@@ -129,8 +129,8 @@ struct TransferLicenseHandlerCheckValidFixture : public LicenseHandlerFixture
         plicense->SetOwner(color, issuer);
         CreateTransaction(transfer_hash, LICENSE);
         CreateTransaction(out_hash, NORMAL);
-        ConnectTransactions(license_hash, transfer_hash, COIN, issuer, color);
-        ConnectTransactions(transfer_hash, out_hash, COIN, user, color);
+        ConnectTransactions(license_hash, transfer_hash, CColorAmount(color, COIN), issuer);
+        ConnectTransactions(transfer_hash, out_hash, CColorAmount(color, COIN), user);
     }
 
     ~TransferLicenseHandlerCheckValidFixture()

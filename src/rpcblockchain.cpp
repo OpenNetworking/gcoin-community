@@ -443,13 +443,7 @@ Value gettxoutsetinfo(const Array& params, bool fHelp)
         ret.push_back(Pair("txouts", (int64_t)stats.nTransactionOutputs));
         ret.push_back(Pair("bytes_serialized", (int64_t)stats.nSerializedSize));
         ret.push_back(Pair("hash_serialized", stats.hashSerialized.GetHex()));
-        Array arrColorAmount;
-        for (colorAmount_t::iterator it = stats.mapTotalAmount.begin(); it != stats.mapTotalAmount.end(); it++) {
-            Object temp;
-            temp.push_back(Pair(boost::to_string(it->first), ValueFromAmount(it->second)));
-            arrColorAmount.push_back(temp);
-        }
-        ret.push_back(Pair("color_amount", arrColorAmount));
+        ret.push_back(Pair("color_amount", ValueFromAmount(stats.mTotalAmount)));
     }
     return ret;
 }
@@ -524,7 +518,7 @@ Value gettxout(const Array& params, bool fHelp)
         ret.push_back(Pair("confirmations", 0));
     else
         ret.push_back(Pair("confirmations", pindex->nHeight - coins.nHeight + 1));
-    ret.push_back(Pair("value", ValueFromAmount(coins.vout[n].nValue)));
+    ret.push_back(Pair("value", ValueFromAmount(coins.vout[n].mValue)));
     Object o;
     ScriptPubKeyToJSON(coins.vout[n].scriptPubKey, o, true);
     ret.push_back(Pair("scriptPubKey", o));
@@ -592,8 +586,7 @@ Value gettxoutaddress(const Array& params, bool fHelp)
         CTxOut out = it->second;
         info.push_back(Pair("txid", hash.GetHex()));
         info.push_back(Pair("vout", (uint64_t)index));
-        info.push_back(Pair("color", (uint64_t)out.color));
-        info.push_back(Pair("value", ValueFromAmount(out.nValue)));
+        info.push_back(Pair("value", ValueFromAmount(out.mValue)));
         info.push_back(Pair("scriptPubKey", HexStr(out.scriptPubKey.begin(), out.scriptPubKey.end())));
         ret.push_back(info);
     }

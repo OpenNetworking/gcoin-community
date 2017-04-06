@@ -242,21 +242,16 @@ bool CWalletDB::WriteAccountingEntry(const CAccountingEntry& acentry)
     return WriteAccountingEntry(++nAccountingEntryNumber, acentry);
 }
 
-colorAmount_t CWalletDB::GetAccountCreditDebit(const string& strAccount)
+CColorAmount CWalletDB::GetAccountCreditDebit(const string& strAccount)
 {
     std::list<CAccountingEntry> entries;
     ListAccountCreditDebit(strAccount, entries);
 
-    colorAmount_t nCreditDebit;
-    BOOST_FOREACH (const CAccountingEntry& entry, entries) {
-        for (colorAmount_t::const_iterator it = entry.nCreditDebit.begin(); it != entry.nCreditDebit.end(); it++) {
-            if (!nCreditDebit.count((*it).first))
-                nCreditDebit[(*it).first] = 0;
-            nCreditDebit[(*it).first] += (*it).second;
-        }
-    }
+    CColorAmount mCreditDebit;
+    BOOST_FOREACH (const CAccountingEntry& entry, entries)
+        mCreditDebit += entry.mCreditDebit;
 
-    return nCreditDebit;
+    return mCreditDebit;
 }
 
 void CWalletDB::ListAccountCreditDebit(const std::string& strAccount, std::list<CAccountingEntry>& entries)

@@ -124,7 +124,7 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn, CWallet *pwallet, 
 
     // Add dummy coinbase tx as first transaction
     pblock->vtx.push_back(CTransaction());
-    pblocktemplate->vTxFees.push_back(-1); // updated at end
+    pblocktemplate->vTxFees.push_back(CColorAmount(1, -1)); // updated at end
     pblocktemplate->vTxSigOps.push_back(-1); // updated at end
 
     // Largest block you're willing to create:
@@ -167,7 +167,7 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn, CWallet *pwallet, 
 
             COrphan* porphan = NULL;
             double dPriority = 0;
-            CAmount nTotalIn = 0;
+            CColorAmount mTotalIn;
             bool fMissingInputs = false;
 
             // Coinbase tx dont need to check this
@@ -199,19 +199,19 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn, CWallet *pwallet, 
                         }
                         mapDependers[txin.prevout.hash].push_back(porphan);
                         porphan->setDependsOn.insert(txin.prevout.hash);
-                        nTotalIn += mempool.mapTx[txin.prevout.hash].GetTx().vout[txin.prevout.n].nValue;
+                        mTotalIn += mempool.mapTx[txin.prevout.hash].GetTx().vout[txin.prevout.n].mValue;
                         continue;
                     }
 
                     const CCoins* coins = view.AccessCoins(txin.prevout.hash);
                     assert(coins);
 
-                    CAmount nValueIn = coins->vout[txin.prevout.n].nValue;
-                    nTotalIn += nValueIn;
+                    CColorAmount mValueIn = coins->vout[txin.prevout.n].mValue;
+                    mTotalIn += mValueIn;
 
                     int nConf = nHeight - coins->nHeight;
 
-                    dPriority += (double)nValueIn * nConf;
+                    dPriority += (double)mValueIn.TotalValue() * nConf;
                 }
             }
 
@@ -221,9 +221,10 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn, CWallet *pwallet, 
             dPriority = tx.ComputePriority(dPriority, nTxSize);
 
             uint256 hash = tx.GetHash();
+            CAmount nTotalIn = mTotalIn.TotalValue();
             mempool.ApplyDeltas(hash, dPriority, nTotalIn);
 
-            CFeeRate feeRate(nTotalIn-tx.GetValueOut(), nTxSize);
+            CFeeRate feeRate(nTotalIn-tx.GetValueOut().TotalValue(), nTxSize);
 
             if (porphan)
             {
@@ -242,7 +243,7 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn, CWallet *pwallet, 
 
         TxPriorityCompare comparer(fSortedByFee);
         std::make_heap(vecPriority.begin(), vecPriority.end(), comparer);
-        CAmount totalfee = 0;
+        CColorAmount totalfee;
 
         while (!vecPriority.empty()) {
             // Take highest priority transaction off the priority queue:
@@ -292,7 +293,7 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn, CWallet *pwallet, 
 
             // Added
             pblock->vtx.push_back(tx);
-            pblocktemplate->vTxFees.push_back(0);
+            pblocktemplate->vTxFees.push_back(CColorAmount(1, 0));
             pblocktemplate->vTxSigOps.push_back(nTxSigOps);
             nBlockSize += nTxSize;
             ++nBlockTx;
@@ -304,14 +305,11 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn, CWallet *pwallet, 
                     if (!txinfo.init(txin.prevout)) {
                         throw std::runtime_error("CreateNewBlock() : fetch input failed");
                     }
-
-                    if (txinfo.GetTxOutColorOfIndex(txin.prevout.n) == TxFee.GetColor())
-                        totalfee += txinfo.GetTxOutValueOfIndex(txin.prevout.n);
+                    totalfee += txinfo.GetTxOutValueOfIndex(txin.prevout.n);
                 }
 
                 BOOST_FOREACH(const CTxOut& txout, tx.vout) {
-                    if (txout.color == TxFee.GetColor())
-                        totalfee -= txout.nValue;
+                    totalfee -= txout.mValue;
                 }
             }
 
@@ -340,11 +338,10 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn, CWallet *pwallet, 
         }
 
         // Coinbase transaction.
-        txNew.vout[0].color = 0;
+        txNew.vout[0].mValue.init(0, 0);
         txNew.vout[0].scriptPubKey = scriptPubKeyIn;
-        txNew.vout[0].nValue = 0;
-        if (totalfee > 0) {
-            CTxOut txout(totalfee, scriptPubKeyIn, TxFee.GetColor());
+        if (totalfee.Value() > 0) {
+            CTxOut txout(totalfee, scriptPubKeyIn);
             txNew.vout.push_back(txout);
         }
         txNew.vin[0].scriptSig = CScript() << OP_0 << OP_0;
@@ -356,7 +353,7 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn, CWallet *pwallet, 
         }
 
         pblock->vtx[0] = txNew;
-        pblocktemplate->vTxFees[0] = -txNew.vout[0].nValue;
+        pblocktemplate->vTxFees[0] = txNew.vout[0].mValue * (-1);
 
         nLastBlockTx = nBlockTx;
         nLastBlockSize = nBlockSize;
@@ -455,7 +452,7 @@ CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey)
 static bool ProcessBlockFound(CBlock* pblock, CWallet& wallet)
 {
     LogPrintf("%s\n", pblock->ToString());
-    LogPrintf("generated %s\n", FormatMoney(pblock->vtx[0].vout[0].nValue));
+    LogPrintf("generated %s\n", FormatMoney(pblock->vtx[0].vout[0].mValue));
 
     // Found a solution
     {

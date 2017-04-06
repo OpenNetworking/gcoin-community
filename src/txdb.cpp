@@ -118,7 +118,7 @@ bool CCoinsViewDB::GetStats(CCoinsStats &stats) const
     CHashWriter ss(SER_GETHASH, PROTOCOL_VERSION);
     stats.hashBlock = GetBestBlock();
     ss << stats.hashBlock;
-    colorAmount_t mapTotalAmount;
+    CColorAmount mTotalAmount;
     while (pcursor->Valid()) {
         boost::this_thread::interruption_point();
         try {
@@ -144,10 +144,7 @@ bool CCoinsViewDB::GetStats(CCoinsStats &stats) const
                         stats.nTransactionOutputs++;
                         ss << VARINT(i+1);
                         ss << out;
-                        if (mapTotalAmount.find(out.color) == mapTotalAmount.end())
-                            mapTotalAmount[out.color] = out.nValue;
-                        else
-                            mapTotalAmount[out.color] += out.nValue;
+                        mTotalAmount += out.mValue;
                     }
                 }
                 stats.nSerializedSize += 32 + slValue.size();
@@ -160,7 +157,7 @@ bool CCoinsViewDB::GetStats(CCoinsStats &stats) const
     }
     stats.nHeight = mapBlockIndex.find(GetBestBlock())->second->nHeight;
     stats.hashSerialized = ss.GetHash();
-    stats.mapTotalAmount = mapTotalAmount;
+    stats.mTotalAmount = mTotalAmount;
     return true;
 }
 
@@ -188,7 +185,7 @@ bool CCoinsViewDB::GetAddrCoins(const string &addr, CTxOutMap &mapTxOut, bool fL
                 ssKey >> txhash;
                 for (unsigned int i = 0; i < coins.vout.size(); i++) {
                     const CTxOut &out = coins.vout[i];
-                    if (!out.IsNull() && addr == (coins.type == VOTE? out.scriptPubKey.ToString(): GetDestination(out.scriptPubKey)) && out.nValue != 0) {
+                    if (!out.IsNull() && addr == (coins.type == VOTE? out.scriptPubKey.ToString(): GetDestination(out.scriptPubKey)) && out.mValue.Value() != 0) {
                         if (!fLicense && (coins.type == NORMAL || coins.type == MINT || coins.type == VOTE))
                             mapTxOut.insert(pair<COutPoint, CTxOut>(COutPoint(txhash, i), out));
                         else if (fLicense && (coins.type == LICENSE))

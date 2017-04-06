@@ -386,8 +386,7 @@ public:
     bool init(const COutPoint &outpoint, const CBlock *block = NULL, bool fUndo = false);
     std::string GetTxOutAddressOfIndex(unsigned int index) const;
     CScript GetTxOutScriptOfIndex(unsigned int index) const;
-    type_Color GetTxOutColorOfIndex(unsigned int index) const;
-    int64_t GetTxOutValueOfIndex(unsigned int index) const;
+    CColorAmount GetTxOutValueOfIndex(unsigned int index) const;
     tx_type GetTxType() const;
     uint256 GetTxHash() const;
     size_t GetTxOutSize() const;
@@ -435,7 +434,7 @@ struct CDiskTxPos : public CDiskBlockPos {
 };
 
 
-CAmount GetMinRelayFee(const CTransaction& tx, unsigned int nBytes, bool fAllowFree);
+CColorAmount GetMinRelayFee(const CTransaction& tx, unsigned int nBytes, bool fAllowFree);
 
 /**
  * Check transaction inputs, and make sure any
@@ -678,15 +677,12 @@ static const int64_t FEE_VALUE = COIN;
 class Fee
 {
 private:
-    const type_Color color;
-    const int64_t value;
+    const CColorAmount mValue;
 public:
-    inline Fee(type_Color Color, int64_t Value) : color(Color), value(Value) { }
-    bool CheckFee(const type_Color& color, const int64_t& Value) const;
+    inline Fee(const CColorAmount& _mValue) : mValue(_mValue) { }
+    bool CheckFee(const CColorAmount& _mValue) const;
     bool CheckFirstCoinBaseTransactions(const CBlock& block) const;
-    void SetOutputForFee(CTxOut &txout, const CScript& scriptPubKeyIn, unsigned int cnt);
-    type_Color GetColor() const { return color; }
-    int64_t GetFee() const { return value;}
+    CColorAmount GetFee() const { return mValue; }
 };
 
 

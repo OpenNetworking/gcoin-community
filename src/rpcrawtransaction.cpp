@@ -19,6 +19,7 @@
 #include "script/sign.h"
 #include "script/standard.h"
 #include "uint256.h"
+#include "utilmoneystr.h"
 #ifdef ENABLE_WALLET
 #include "wallet/wallet.h"
 #endif
@@ -90,12 +91,12 @@ void TxToJSON(const CTransaction& tx, const uint256 hashBlock, Object& entry)
     for (unsigned int i = 0; i < tx.vout.size(); i++) {
         const CTxOut& txout = tx.vout[i];
         Object out;
-        out.push_back(Pair("value", txout.nValue));
+        out.push_back(Pair("color", (int64_t)txout.mValue.Color()));
+        out.push_back(Pair("value", txout.mValue.Value()));
         out.push_back(Pair("n", (int64_t)i));
         Object o;
         ScriptPubKeyToJSON(txout.scriptPubKey, o, true);
         out.push_back(Pair("scriptPubKey", o));
-        out.push_back(Pair("color", (int64_t) txout.color));
         vout.push_back(out);
     }
     entry.push_back(Pair("vout", vout));
@@ -279,57 +280,46 @@ Value listunspent(const Array& params, bool fHelp)
     Array results;
     std::vector<COutput> vecOutputs;
     assert(pwalletMain != NULL);
-
-    // scan distinct colors in the wallet
-    std::set<type_Color> colors;
-    for (std::map<uint256, CWalletTx>::const_iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
-        BOOST_FOREACH(const CTxOut txout, it->second.vout)
-            if (colors.count(txout.color) == 0)
-                colors.insert(txout.color);
-
-    // get all UTXOs for every color
-    for (std::set<type_Color>::const_iterator it = colors.begin(); it != colors.end(); ++it) {
-        pwalletMain->AvailableCoins(vecOutputs, *it, false);
-        if (fColor && *it != color_filter) continue;
-        BOOST_FOREACH(const COutput& out, vecOutputs) {
-            if (out.nDepth < nMinDepth || out.nDepth > nMaxDepth)
-                continue;
-            if (setAddress.size()) {
-                CTxDestination address;
-                if (!ExtractDestination(out.tx->vout[out.i].scriptPubKey, address))
-                    continue;
-
-                if (!setAddress.count(address))
-                    continue;
-            }
-
-            int64_t nValue = out.tx->vout[out.i].nValue;
-            const CScript& pk = out.tx->vout[out.i].scriptPubKey;
-            Object entry;
-            entry.push_back(Pair("txid", out.tx->GetHash().GetHex()));
-            entry.push_back(Pair("vout", out.i));
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+    pwalletMain->AvailableCoins(vecOutputs, false);
+    BOOST_FOREACH(const COutput& out, vecOutputs) {
+        if (fColor && out.tx->vout[out.i].mValue.Color() != color_filter) continue;
+        if (out.nDepth < nMinDepth || out.nDepth > nMaxDepth)
+            continue;
+        if (setAddress.size()) {
             CTxDestination address;
-            if (ExtractDestination(out.tx->vout[out.i].scriptPubKey, address)) {
-                entry.push_back(Pair("address", CBitcoinAddress(address).ToString()));
-                if (pwalletMain->mapAddressBook.count(address))
-                    entry.push_back(Pair("account", pwalletMain->mapAddressBook[address].name));
-            }
-            entry.push_back(Pair("scriptPubKey", HexStr(pk.begin(), pk.end())));
-            if (pk.IsPayToScriptHash()) {
-                CTxDestination address;
-                if (ExtractDestination(pk, address)) {
-                    const CScriptID& hash = boost::get<CScriptID>(address);
-                    CScript redeemScript;
-                    if (pwalletMain->GetCScript(hash, redeemScript))
-                        entry.push_back(Pair("redeemScript", HexStr(redeemScript.begin(), redeemScript.end())));
-                }
-            }
-            entry.push_back(Pair("amount", ValueFromAmount(nValue)));
-            entry.push_back(Pair("color", (int64_t)out.tx->vout[out.i].color));
-            entry.push_back(Pair("confirmations", out.nDepth));
-            entry.push_back(Pair("spendable", out.fSpendable));
-            results.push_back(entry);
+            if (!ExtractDestination(out.tx->vout[out.i].scriptPubKey, address))
+                continue;
+
+            if (!setAddress.count(address))
+                continue;
         }
+
+        CColorAmount mValue = out.tx->vout[out.i].mValue;
+        const CScript& pk = out.tx->vout[out.i].scriptPubKey;
+        Object entry;
+        entry.push_back(Pair("txid", out.tx->GetHash().GetHex()));
+        entry.push_back(Pair("vout", out.i));
+        CTxDestination address;
+        if (ExtractDestination(out.tx->vout[out.i].scriptPubKey, address)) {
+            entry.push_back(Pair("address", CBitcoinAddress(address).ToString()));
+            if (pwalletMain->mapAddressBook.count(address))
+                entry.push_back(Pair("account", pwalletMain->mapAddressBook[address].name));
+        }
+        entry.push_back(Pair("scriptPubKey", HexStr(pk.begin(), pk.end())));
+        if (pk.IsPayToScriptHash()) {
+            CTxDestination address;
+            if (ExtractDestination(pk, address)) {
+                const CScriptID& hash = boost::get<CScriptID>(address);
+                CScript redeemScript;
+                if (pwalletMain->GetCScript(hash, redeemScript))
+                    entry.push_back(Pair("redeemScript", HexStr(redeemScript.begin(), redeemScript.end())));
+            }
+        }
+        entry.push_back(Pair("amount", ValueFromAmount(mValue)));
+        entry.push_back(Pair("confirmations", out.nDepth));
+        entry.push_back(Pair("spendable", out.fSpendable));
+        results.push_back(entry);
     }
     return results;
 }
@@ -443,7 +433,7 @@ Value createrawtransaction(const Array& params, bool fHelp)
         const Value& COLOR = find_value(o, "color");
         type_Color color = ColorFromValue(COLOR);
 
-        CTxOut out(nAmount, scriptPubKey, color);
+        CTxOut out(CColorAmount(color, nAmount), scriptPubKey);
         rawTx.vout.push_back(out);
     }
 
@@ -727,7 +717,7 @@ Value signrawtransaction(const Array& params, bool fHelp)
                 if ((unsigned int)nOut >= coins->vout.size())
                     coins->vout.resize(nOut+1);
                 coins->vout[nOut].scriptPubKey = scriptPubKey;
-                coins->vout[nOut].nValue = 0; // we don't know the actual output value
+                coins->vout[nOut].mValue = CColorAmount(0, 0); // we don't know the actual output value
             }
 
             // if redeemScript given and not using the local wallet (private keys

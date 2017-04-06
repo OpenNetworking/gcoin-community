@@ -900,7 +900,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             return InitError(strprintf(_("Invalid amount for -maxtxfee=<amount>: '%s'"), mapArgs["-maptxfee"]));
         if (nMaxFee > nHighTransactionMaxFeeWarning)
             InitWarning(_("Warning: -maxtxfee is set very high! Fees this large could be paid on a single transaction."));
-        maxTxFee = nMaxFee;
+        maxTxFee.init(1, nMaxFee);
         if (CFeeRate(maxTxFee, 1000) < ::minRelayTxFee)
         {
             return InitError(strprintf(_("Invalid amount for -maxtxfee=<amount>: '%s' (must be at least the minrelay fee of %s to prevent stuck transactions)"),

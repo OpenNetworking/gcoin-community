@@ -208,16 +208,16 @@ const CTxOut &CCoinsViewCache::GetOutputFor(const CTxIn& input) const
     return coins->vout[input.prevout.n];
 }
 
-CAmount CCoinsViewCache::GetValueIn(const CTransaction& tx) const
+CColorAmount CCoinsViewCache::GetValueIn(const CTransaction& tx) const
 {
     if (tx.IsCoinBase())
-        return 0;
+        return CColorAmount();
 
-    CAmount nResult = 0;
+    CColorAmount mResult;
     for (unsigned int i = 0; i < tx.vin.size(); i++)
-        nResult += GetOutputFor(tx.vin[i]).nValue;
+        mResult += GetOutputFor(tx.vin[i]).mValue;
 
-    return nResult;
+    return mResult;
 }
 
 bool CCoinsViewCache::HaveInputs(const CTransaction& tx) const
@@ -245,7 +245,7 @@ double CCoinsViewCache::GetPriority(const CTransaction &tx, int nHeight) const
         assert(coins);
         if (!coins->IsAvailable(txin.prevout.n)) continue;
         if (coins->nHeight < nHeight) {
-            dResult += coins->vout[txin.prevout.n].nValue * (nHeight-coins->nHeight);
+            dResult += coins->vout[txin.prevout.n].mValue.TotalValue() * (nHeight-coins->nHeight);
         }
     }
     return tx.ComputePriority(dResult);
@@ -257,7 +257,7 @@ bool CCoinsViewCache::GetAddrCoins(const string &addr, CTxOutMap &mapTxOut, bool
         uint256 txhash = it->first;
         for (unsigned int i = 0; i < coins.vout.size(); i++) {
             const CTxOut &out = coins.vout[i];
-            if (!out.IsNull() && addr == (coins.type == VOTE? out.scriptPubKey.ToString(): GetDestination(out.scriptPubKey)) && out.nValue != 0) {
+            if (!out.IsNull() && addr == (coins.type == VOTE? out.scriptPubKey.ToString(): GetDestination(out.scriptPubKey)) && out.mValue.Value() != 0) {
                 if (!fLicense && (coins.type == NORMAL || coins.type == MINT || coins.type == VOTE))
                     mapTxOut.insert(pair<COutPoint, CTxOut>(COutPoint(txhash, i), out));
                 else if (fLicense && (coins.type == LICENSE))

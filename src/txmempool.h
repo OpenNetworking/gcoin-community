@@ -38,7 +38,7 @@ class CTxMemPoolEntry
 {
 private:
     CTransaction tx;
-    CAmount nFee; //! Cached to avoid expensive parent-transaction lookups
+    CColorAmount mFee; //! Cached to avoid expensive parent-transaction lookups
     size_t nTxSize; //! ... and avoid recomputing tx size
     size_t nModSize; //! ... and modified size for priority
     int64_t nTime; //! Local time when entering the mempool
@@ -47,14 +47,14 @@ private:
     bool hadNoDependencies; //! Not dependent on any other txs when it entered the mempool
 
 public:
-    CTxMemPoolEntry(const CTransaction& _tx, const CAmount& _nFee,
+    CTxMemPoolEntry(const CTransaction& _tx, const CColorAmount& _mFee,
                     int64_t _nTime, double _dPriority, unsigned int _nHeight, bool poolHasNoInputsOf = false);
     CTxMemPoolEntry();
     CTxMemPoolEntry(const CTxMemPoolEntry& other);
 
     const CTransaction& GetTx() const { return this->tx; }
     double GetPriority(unsigned int currentHeight) const;
-    CAmount GetFee() const { return nFee; }
+    CColorAmount GetFee() const { return mFee; }
     size_t GetTxSize() const { return nTxSize; }
     int64_t GetTime() const { return nTime; }
     unsigned int GetHeight() const { return nHeight; }

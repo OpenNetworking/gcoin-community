@@ -505,7 +505,7 @@ static bool rest_getutxos(AcceptedConnection* conn,
             Object utxo;
             utxo.push_back(Pair("txvers", (int32_t)coin.nTxVer));
             utxo.push_back(Pair("height", (int32_t)coin.nHeight));
-            utxo.push_back(Pair("value", ValueFromAmount(coin.out.nValue)));
+            utxo.push_back(Pair("value", ValueFromAmount(coin.out.mValue)));
 
             // include the script in a json output
             Object o;

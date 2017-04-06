@@ -20,15 +20,15 @@
 using namespace std;
 
 CTxMemPoolEntry::CTxMemPoolEntry():
-    nFee(0), nTxSize(0), nModSize(0), nTime(0), dPriority(0.0), hadNoDependencies(false)
+    mFee(CColorAmount(1, 0)), nTxSize(0), nModSize(0), nTime(0), dPriority(0.0), hadNoDependencies(false)
 {
     nHeight = MEMPOOL_HEIGHT;
 }
 
-CTxMemPoolEntry::CTxMemPoolEntry(const CTransaction& _tx, const CAmount& _nFee,
+CTxMemPoolEntry::CTxMemPoolEntry(const CTransaction& _tx, const CColorAmount& _mFee,
                                  int64_t _nTime, double _dPriority,
                                  unsigned int _nHeight, bool poolHasNoInputsOf):
-    tx(_tx), nFee(_nFee), nTime(_nTime), dPriority(_dPriority), nHeight(_nHeight),
+    tx(_tx), mFee(_mFee), nTime(_nTime), dPriority(_dPriority), nHeight(_nHeight),
     hadNoDependencies(poolHasNoInputsOf)
 {
     nTxSize = ::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION);
@@ -43,8 +43,8 @@ CTxMemPoolEntry::CTxMemPoolEntry(const CTxMemPoolEntry& other)
 double
 CTxMemPoolEntry::GetPriority(unsigned int currentHeight) const
 {
-    CAmount nValueIn = tx.GetValueOut()+nFee;
-    double deltaPriority = ((double)(currentHeight-nHeight)*nValueIn)/nModSize;
+    CColorAmount mValueIn = tx.GetValueOut()+mFee;
+    double deltaPriority = ((double)(currentHeight-nHeight)*mValueIn.TotalValue())/nModSize;
     double dResult = dPriority + deltaPriority;
     return dResult;
 }
@@ -208,7 +208,7 @@ void CTxMemPool::removeColorConflicts(const CTransaction &tx, std::list<CTransac
         BOOST_FOREACH(const PAIRTYPE(uint256, CTxMemPoolEntry)& entry, mempool.mapTx) {
             const CTransaction& m_tx = entry.second.GetTx();
             if (m_tx.type != LICENSE) continue;
-            if (m_tx.vout[0].color == txout.color) {
+            if (m_tx.vout[0].mValue.Color() == txout.mValue.Color()) {
                 const CTransaction &txConflict = m_tx;
                 remove(txConflict, removed, true);
             }
@@ -454,7 +454,7 @@ bool CCoinsViewMemPool::GetAddrCoins(const string &addr, CTxOutMap &mapTxOut, bo
         tx = it->second.GetTx();
         for (unsigned int i = 0; i < tx.vout.size(); i++) {
             const CTxOut &out = tx.vout[i];
-            if (!out.IsNull() && addr == (tx.type == VOTE? out.scriptPubKey.ToString(): GetDestination(out.scriptPubKey)) && out.nValue != 0) {
+            if (!out.IsNull() && addr == (tx.type == VOTE? out.scriptPubKey.ToString(): GetDestination(out.scriptPubKey)) && out.mValue.Value() != 0) {
                 if (!fLicense && (tx.type == NORMAL || tx.type == MINT || tx.type == VOTE))
                     mapTxOut.insert(pair<COutPoint, CTxOut>(COutPoint(tx.GetHash(), i), out));
                 else if (fLicense && (tx.type == LICENSE))

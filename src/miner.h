@@ -20,7 +20,7 @@ namespace Consensus { struct Params; };
 struct CBlockTemplate
 {
     CBlock block;
-    std::vector<CAmount> vTxFees;
+    std::vector<CColorAmount> vTxFees;
     std::vector<int64_t> vTxSigOps;
 };
 

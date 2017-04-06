@@ -77,7 +77,7 @@ script:
     - ./configure --cache-file=../config.cache $GCOIN_CONFIG_ALL $GCOIN_CONFIG || ( cat config.log && false)
     - make $MAKEJOBS $GOAL || ( echo "Build failure. Verbose build follows." && make $GOAL V=1 ; false )
     - export LD_LIBRARY_PATH=$TRAVIS_BUILD_DIR/depends/$HOST/lib
-    - if [ "$RUN_TESTS" = "true" ]; then make check; fi
+    - if [ "$RUN_TESTS" = "true" ]; then ./src/test/test_gcoin --run_test=wallet_tests; fi
 #    - if [ "$RUN_TESTS" = "true" ]; then qa/pull-tester/rpc-tests.py --coverage; fi
 after_script:
     - echo $TRAVIS_COMMIT_RANGE

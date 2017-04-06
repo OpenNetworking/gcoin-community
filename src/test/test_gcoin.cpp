@@ -167,9 +167,8 @@ void CreateTransaction(
  */
 void ConnectTransactions(const uint256 &src_hash,
         const uint256 &dst_hash,
-        int64_t value,
+        CColorAmount mValue,
         const string &address,
-        const type_Color &color,
         const string &misc)
 {
     CScript address_script;
@@ -177,12 +176,12 @@ void ConnectTransactions(const uint256 &src_hash,
 
     size_t index = transactions[src_hash].vout.size();
 
-    transactions[src_hash].vout.push_back(CTxOut(value, address_script, color));
+    transactions[src_hash].vout.push_back(CTxOut(mValue, address_script));
     if (transactions[src_hash].type == LICENSE && !misc.empty()) {
         CScript scriptMessage;
         vector<unsigned char> msg(misc.begin(), misc.end());
         scriptMessage = CScript() << OP_RETURN << msg;
-        CTxOut op_return(0, scriptMessage, color);
+        CTxOut op_return(CColorAmount(mValue.Color(), 0), scriptMessage);
         transactions[src_hash].vout.push_back(op_return);
     }
     transactions[dst_hash].vin.push_back(CTxIn(COutPoint(src_hash, index)));

@@ -46,8 +46,8 @@ struct NormalHandlerCheckValidFixture : public NormalHandlerFixture
         CreateTransaction(in_hash, MINT);
         CreateTransaction(member_hash, NORMAL);
         CreateTransaction(out_hash, NORMAL);
-        ConnectTransactions(in_hash, member_hash, COIN, member, color);
-        ConnectTransactions(member_hash, out_hash, COIN, receiver, color);
+        ConnectTransactions(in_hash, member_hash, CColorAmount(color, COIN), member);
+        ConnectTransactions(member_hash, out_hash, CColorAmount(color, COIN), receiver);
     }
 
     ~NormalHandlerCheckValidFixture()
@@ -96,8 +96,8 @@ BOOST_FIXTURE_TEST_CASE(NormalHandlerApplyNoMemberOnly, NormalHandlerFixture)
     CreateTransaction(hash1, MINT);
     CreateTransaction(hash2, NORMAL);
     CreateTransaction(hash3, NORMAL);
-    ConnectTransactions(hash1, hash2, COIN, issuer, color);
-    ConnectTransactions(hash2, hash3, COIN, member, color);
+    ConnectTransactions(hash1, hash2, CColorAmount(color, COIN), issuer);
+    ConnectTransactions(hash2, hash3, CColorAmount(color, COIN), member);
 
     CLicenseInfo *pinfo = new CLicenseInfo();
     BOOST_CHECK(plicense->SetOwner(color, issuer, pinfo));

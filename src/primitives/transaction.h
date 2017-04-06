@@ -105,35 +105,44 @@ public:
 class CTxOut
 {
 public:
-    CAmount nValue;
+    CColorAmount mValue;
     CScript scriptPubKey;
-    type_Color color;
     CTxOut()
     {
         SetNull();
     }
 
-    CTxOut(const CAmount& nValueIn, CScript scriptPubKeyIn, type_Color color);
+    CTxOut(const CColorAmount& mValueIn, CScript scriptPubKeyIn);
 
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
-        READWRITE(nValue);
-        READWRITE(scriptPubKey);
-        READWRITE(color);
+        if (!ser_action.ForRead()) {
+            CAmount value = mValue.Value();
+            type_Color color = mValue.Color();
+            READWRITE(value);
+            READWRITE(scriptPubKey);
+            READWRITE(color);
+        } else {
+            CAmount value;
+            type_Color color;
+            READWRITE(value);
+            READWRITE(scriptPubKey);
+            READWRITE(color);
+            mValue.init(color, value);
+        }
     }
 
     void SetNull()
     {
-        nValue = -1;
+        mValue.init(0, -1);
         scriptPubKey.clear();
-        color = 0;
     }
 
     bool IsNull() const
     {
-        return (nValue == -1);
+        return (mValue == CColorAmount(0, -1));
     }
 
     uint256 GetHash() const;
@@ -149,19 +158,18 @@ public:
         // so dust is a txout less than 546 satoshis 
         // with default minRelayTxFee.
         size_t nSize = GetSerializeSize(SER_DISK,0)+148u;
-        return 3*minRelayTxFee.GetFee(nSize);
+        return 3*(minRelayTxFee.GetFee(nSize).TotalValue());
     }
 
     bool IsDust(const CFeeRate &minRelayTxFee) const
     {
-        return (nValue < GetDustThreshold(minRelayTxFee));
+        return (mValue.TotalValue() < GetDustThreshold(minRelayTxFee));
     }
 
     friend bool operator==(const CTxOut& a, const CTxOut& b)
     {
-        return (a.nValue       == b.nValue &&
-                a.scriptPubKey == b.scriptPubKey &&
-                a.color        == b.color);
+        return (a.mValue       == b.mValue &&
+                a.scriptPubKey == b.scriptPubKey);
     }
 
     friend bool operator!=(const CTxOut& a, const CTxOut& b)
@@ -256,7 +264,7 @@ public:
         return encryptedKeys.size() > 0;
     }
     // Return sum of txouts.
-    CAmount GetValueOut() const;
+    CColorAmount GetValueOut() const;
     // GetValueIn() is a method on CCoinsViewCache, because
     // inputs must be known to compute value in.
 
