@@ -54,8 +54,9 @@ CFeeRate CWallet::minTxFee = CFeeRate(1000);
 
 struct CompareValueOnly
 {
-    bool operator()(const pair<CAmount, pair<const CWalletTx*, unsigned int> >& t1,
-                    const pair<CAmount, pair<const CWalletTx*, unsigned int> >& t2) const
+    template <typename T>
+    bool operator()(const pair<T, pair<const CWalletTx*, unsigned int> >& t1,
+                    const pair<T, pair<const CWalletTx*, unsigned int> >& t2) const
     {
         return t1.first < t2.first;
     }
@@ -606,15 +607,11 @@ bool CWallet::AddToWallet(const CWalletTx& wtxIn, bool fFromLoadWallet, CWalletD
     if (fFromLoadWallet) {
         mapWallet[hash] = wtxIn;
         mapWallet[hash].BindWallet(this);
-        for (unsigned int i = 0; i < wtxIn.vout.size(); i++)
-            mapWalletAddr[GetDestination(wtxIn.vout[i].scriptPubKey)].insert(make_pair(hash, i));
         AddToSpends(hash);
     } else {
         LOCK(cs_wallet);
         // Inserts only if not already there, returns tx inserted or tx found
         pair<map<uint256, CWalletTx>::iterator, bool> ret = mapWallet.insert(make_pair(hash, wtxIn));
-        for (unsigned int i = 0; i < wtxIn.vout.size(); i++)
-            mapWalletAddr[GetDestination(wtxIn.vout[i].scriptPubKey)].insert(make_pair(hash, i));
         CWalletTx& wtx = (*ret.first).second;
         wtx.BindWallet(this);
         bool fInsertedNew = ret.second;
@@ -759,12 +756,8 @@ void CWallet::EraseFromWallet(const uint256 &hash)
         LOCK(cs_wallet);
         map<uint256, CWalletTx>::iterator ittx = mapWallet.find(hash);
         for (unsigned int i = 0; ittx != mapWallet.end() && i < ittx->second.vout.size(); i++) {
-            map<string, set<pair<uint256, unsigned int> > >::iterator itaddr = mapWalletAddr.find(GetDestination(ittx->second.vout[i].scriptPubKey));
-            if (itaddr == mapWalletAddr.end()) return;
-            if (itaddr->second.erase(make_pair(hash, i)) && mapWallet.erase(hash))
+            if (mapWallet.erase(hash))
                 CWalletDB(strWalletFile).EraseTx(hash);
-            if (itaddr->second.empty())
-                mapWalletAddr.erase(itaddr);
         }
     }
     return;
@@ -785,7 +778,7 @@ isminetype CWallet::IsMine(const CTxIn &txin) const
     return ISMINE_NO;
 }
 
-CAmount CWallet::GetDebit(const CTxIn &txin, const isminefilter& filter) const
+CColorAmount CWallet::GetDebit(const CTxIn &txin, const isminefilter& filter) const
 {
     {
         LOCK(cs_wallet);
@@ -794,10 +787,10 @@ CAmount CWallet::GetDebit(const CTxIn &txin, const isminefilter& filter) const
             const CWalletTx& prev = (*mi).second;
             if (txin.prevout.n < prev.vout.size())
                 if (IsMine(prev.vout[txin.prevout.n]) & filter)
-                    return prev.vout[txin.prevout.n].nValue;
+                    return prev.vout[txin.prevout.n].mValue;
         }
     }
-    return 0;
+    return CColorAmount();
 }
 
 isminetype CWallet::IsMine(const CTxOut& txout) const
@@ -805,11 +798,11 @@ isminetype CWallet::IsMine(const CTxOut& txout) const
     return ::IsMine(*this, txout.scriptPubKey);
 }
 
-CAmount CWallet::GetCredit(const CTxOut& txout, const isminefilter& filter) const
+CColorAmount CWallet::GetCredit(const CTxOut& txout, const isminefilter& filter) const
 {
-    if (!MoneyRange(txout.nValue))
+    if (!MoneyRange(txout.mValue.Value()))
         throw std::runtime_error("CWallet::GetCredit(): value out of range");
-    return ((IsMine(txout) & filter) ? txout.nValue : 0);
+    return ((IsMine(txout) & filter) ? txout.mValue : CColorAmount());
 }
 
 bool CWallet::IsChange(const CTxOut& txout) const
@@ -833,11 +826,11 @@ bool CWallet::IsChange(const CTxOut& txout) const
     return false;
 }
 
-CAmount CWallet::GetChange(const CTxOut& txout) const
+CColorAmount CWallet::GetChange(const CTxOut& txout) const
 {
-    if (!MoneyRange(txout.nValue))
+    if (!MoneyRange(txout.mValue.Value()))
         throw std::runtime_error("CWallet::GetChange(): value out of range");
-    return (IsChange(txout) ? txout.nValue : 0);
+    return (IsChange(txout) ? txout.mValue : CColorAmount());
 }
 
 bool CWallet::IsMine(const CTransaction& tx) const
@@ -850,58 +843,53 @@ bool CWallet::IsMine(const CTransaction& tx) const
 
 bool CWallet::IsFromMe(const CTransaction& tx) const
 {
-    return (GetDebit(tx, ISMINE_ALL) > 0);
+    return (GetDebit(tx, ISMINE_ALL).TotalValue() > 0);
 }
 
-CAmount CWallet::GetDebit(const CTransaction& tx, const isminefilter& filter) const
+CColorAmount CWallet::GetDebit(const CTransaction& tx, const isminefilter& filter) const
 {
-    colorAmount_t nDebit_;
-    CAmount nDebit = 0;
+    CColorAmount mDebit;
     BOOST_FOREACH(const CTxIn& txin, tx.vin)
     {
-        nDebit += GetDebit(txin, filter);
+        mDebit += GetDebit(txin, filter);
 
         LOCK(cs_wallet);
         map<uint256, CWalletTx>::const_iterator mi = mapWallet.find(txin.prevout.hash);
         if (mi != mapWallet.end()) {
             const CWalletTx& prev = (*mi).second;
             if (txin.prevout.n < prev.vout.size()) {
-                type_Color color = prev.vout[txin.prevout.n].color;
-                if (nDebit_.find(color) != nDebit_.end()) {
-                    nDebit_[color] += GetDebit(txin, filter);
-                } else {
-                    nDebit_[color] = GetDebit(txin, filter);
-                }
-                if (!MoneyRange(nDebit_[color]))
+                type_Color color = prev.vout[txin.prevout.n].mValue.Color();
+                mDebit += GetDebit(txin, filter);
+                if (!MoneyRange(mDebit[color]))
                     throw std::runtime_error("CWallet::GetDebit(): value out of range");
             }
         }
     }
-    return nDebit;
+    return mDebit;
 }
 
-CAmount CWallet::GetCredit(const CTransaction& tx, const isminefilter& filter) const
+CColorAmount CWallet::GetCredit(const CTransaction& tx, const isminefilter& filter) const
 {
-    CAmount nCredit = 0;
+    CColorAmount mCredit;
     BOOST_FOREACH(const CTxOut& txout, tx.vout)
     {
-        nCredit += GetCredit(txout, filter);
-        if (!MoneyRange(nCredit))
+        mCredit += GetCredit(txout, filter);
+        if (!MoneyRange(mCredit[txout.mValue.Color()]))
             throw std::runtime_error("CWallet::GetCredit(): value out of range");
     }
-    return nCredit;
+    return mCredit;
 }
 
-CAmount CWallet::GetChange(const CTransaction& tx) const
+CColorAmount CWallet::GetChange(const CTransaction& tx) const
 {
-    CAmount nChange = 0;
+    CColorAmount mChange;
     BOOST_FOREACH(const CTxOut& txout, tx.vout)
     {
-        nChange += GetChange(txout);
-        if (!MoneyRange(nChange))
+        mChange += GetChange(txout);
+        if (!MoneyRange(mChange[txout.mValue.Color()]))
             throw std::runtime_error("CWallet::GetChange(): value out of range");
     }
-    return nChange;
+    return mChange;
 }
 
 int64_t CWalletTx::GetTxTime() const
@@ -944,18 +932,18 @@ int CWalletTx::GetRequestCount() const
 }
 
 void CWalletTx::GetAmounts(list<COutputEntry>& listReceived,
-                           list<COutputEntry>& listSent, CAmount& nFee, string& strSentAccount, const isminefilter& filter) const
+                           list<COutputEntry>& listSent, CColorAmount& mFee, string& strSentAccount, const isminefilter& filter) const
 {
-    nFee = 0;
+    mFee.clear();
     listReceived.clear();
     listSent.clear();
     strSentAccount = strFromAccount;
 
     // Compute fee:
-    CAmount nDebit = GetDebit(filter);
-    if (nDebit > 0) { // debit>0 means we signed/sent this transaction
-        CAmount nValueOut = GetValueOut();
-        nFee = nDebit - nValueOut;
+    CColorAmount mDebit = GetDebit(filter);
+    if (mDebit.TotalValue() > 0) { // debit>0 means we signed/sent this transaction
+        CColorAmount mValueOut = GetValueOut();
+        mFee = mDebit - mValueOut;
     }
 
     // Sent/received.
@@ -965,7 +953,7 @@ void CWalletTx::GetAmounts(list<COutputEntry>& listReceived,
         // Only need to handle txouts if AT LEAST one of these is true:
         //   1) they debit from us (sent)
         //   2) the output is to us (received)
-        if (nDebit > 0) {
+        if (mDebit.TotalValue() > 0) {
             // Don't report 'change' txouts
             if (pwallet->IsChange(txout))
                 continue;
@@ -980,14 +968,12 @@ void CWalletTx::GetAmounts(list<COutputEntry>& listReceived,
             address = CNoDestination();
         }
 
-        COutputEntry output = {address, txout.nValue, (int)i, txout.color};
+        COutputEntry output = {address, txout.mValue, (int)i};
 
         // If we are debited by the transaction, add the output as a "sent" entry
-        if (nDebit > 0) {
+        if (mDebit.TotalValue() > 0) {
             if (type == LICENSE && vout.size() == 1)
                 continue;
-            else
-                output.color = 0;
             listSent.push_back(output);
         }
 
@@ -998,36 +984,32 @@ void CWalletTx::GetAmounts(list<COutputEntry>& listReceived,
 
 }
 
-void CWalletTx::GetAccountAmounts(const string& strAccount, colorAmount_t& nReceived, colorAmount_t& nSent, const isminefilter& filter) const
+void CWalletTx::GetAccountAmounts(const string& strAccount, CColorAmount& mReceived, CColorAmount& mSent, CColorAmount& mFee, const isminefilter& filter) const
 {
+    mReceived.clear();
+    mSent.clear();
+    mFee.clear();
 
-    CAmount allFee;
+    CColorAmount allFee;
     string strSentAccount;
     list<COutputEntry> listReceived;
     list<COutputEntry> listSent;
     GetAmounts(listReceived, listSent, allFee, strSentAccount, filter);
 
     if (strAccount == strSentAccount) {
-        BOOST_FOREACH(const COutputEntry& s, listSent) {
-            if (nSent.count(s.color) == 0)
-                nSent[s.color] = 0;
-            nSent[s.color] += s.amount;
-        }
+        BOOST_FOREACH(const COutputEntry& s, listSent)
+            mSent += s.mAmount;
+        mFee = allFee;
     }
     {
         LOCK(pwallet->cs_wallet);
         BOOST_FOREACH(const COutputEntry& r, listReceived) {
             if (pwallet->mapAddressBook.count(r.destination)) {
                 map<CTxDestination, CAddressBookData>::const_iterator mi = pwallet->mapAddressBook.find(r.destination);
-                if (mi != pwallet->mapAddressBook.end() && (*mi).second.name == strAccount) {
-                    if (nReceived.count(r.color) == 0)
-                        nReceived[r.color] = 0;
-                    nReceived[r.color] += r.amount;
-                }
+                if (mi != pwallet->mapAddressBook.end() && (*mi).second.name == strAccount)
+                    mReceived += r.mAmount;
             } else if (strAccount.empty()) {
-                if (nReceived.count(r.color) == 0)
-                    nReceived[r.color] = 0;
-                nReceived[r.color] += r.amount;
+                mReceived += r.mAmount;
             }
         }
     }
@@ -1139,185 +1121,171 @@ set<uint256> CWalletTx::GetConflicts() const
     return result;
 }
 
-CAmount CWalletTx::GetDebit(const isminefilter& filter) const
+CColorAmount CWalletTx::GetDebit(const isminefilter& filter) const
 {
     if (vin.empty())
-        return 0;
+        return CColorAmount();
 
-    CAmount debit = 0;
+    CColorAmount debit;
     if(filter & ISMINE_SPENDABLE)
     {
         if (fDebitCached)
-            debit += nDebitCached;
+            debit += mDebitCached;
         else
         {
-            nDebitCached = pwallet->GetDebit(*this, ISMINE_SPENDABLE);
+            mDebitCached = pwallet->GetDebit(*this, ISMINE_SPENDABLE);
             fDebitCached = true;
-            debit += nDebitCached;
+            debit += mDebitCached;
         }
     }
     if(filter & ISMINE_WATCH_ONLY)
     {
         if(fWatchDebitCached)
-            debit += nWatchDebitCached;
+            debit += mWatchDebitCached;
         else
         {
-            nWatchDebitCached = pwallet->GetDebit(*this, ISMINE_WATCH_ONLY);
+            mWatchDebitCached = pwallet->GetDebit(*this, ISMINE_WATCH_ONLY);
             fWatchDebitCached = true;
-            debit += nWatchDebitCached;
+            debit += mWatchDebitCached;
         }
     }
     return debit;
 }
 
-CAmount CWalletTx::GetCredit(const isminefilter& filter) const
+CColorAmount CWalletTx::GetCredit(const isminefilter& filter) const
 {
     // Must wait until coinbase is safely deep enough in the chain before valuing it
     if (IsCoinBase() && GetBlocksToMaturity() > 0)
-        return 0;
+        return CColorAmount();
 
-    CAmount credit = 0;
+    CColorAmount credit;
     if (filter & ISMINE_SPENDABLE)
     {
         // GetBalance can assume transactions in mapWallet won't change
         if (fCreditCached)
-            credit += nCreditCached;
+            credit += mCreditCached;
         else
         {
-            nCreditCached = pwallet->GetCredit(*this, ISMINE_SPENDABLE);
+            mCreditCached = pwallet->GetCredit(*this, ISMINE_SPENDABLE);
             fCreditCached = true;
-            credit += nCreditCached;
+            credit += mCreditCached;
         }
     }
     if (filter & ISMINE_WATCH_ONLY)
     {
         if (fWatchCreditCached)
-            credit += nWatchCreditCached;
+            credit += mWatchCreditCached;
         else
         {
-            nWatchCreditCached = pwallet->GetCredit(*this, ISMINE_WATCH_ONLY);
+            mWatchCreditCached = pwallet->GetCredit(*this, ISMINE_WATCH_ONLY);
             fWatchCreditCached = true;
-            credit += nWatchCreditCached;
+            credit += mWatchCreditCached;
         }
     }
     return credit;
 }
 
-CAmount CWalletTx::GetImmatureCredit(bool fUseCache) const
+CColorAmount CWalletTx::GetImmatureCredit(bool fUseCache) const
 {
     if (IsCoinBase() && GetBlocksToMaturity() > 0 && IsInMainChain())
     {
         if (fUseCache && fImmatureCreditCached)
-            return nImmatureCreditCached;
-        nImmatureCreditCached = pwallet->GetCredit(*this, ISMINE_SPENDABLE);
+            return mImmatureCreditCached;
+        mImmatureCreditCached = pwallet->GetCredit(*this, ISMINE_SPENDABLE);
         fImmatureCreditCached = true;
-        return nImmatureCreditCached;
+        return mImmatureCreditCached;
     }
 
-    return 0;
+    return CColorAmount();
 }
 
 CAmount CWalletTx::GetAvailableColorCredit(type_Color color, bool fUseCache) const
 {
-    if (pwallet == 0)
-        return 0;
-
-    // Must wait until coinbase is safely deep enough in the chain before valuing it
-    if (IsCoinBase() && GetBlocksToMaturity() > 0)
-        return 0;
-
-    if (fUseCache && nAvailableCreditCached.find(color) != nAvailableCreditCached.end())
-        return nAvailableCreditCached[color];
-
-    int64_t nCredit = 0;
-    uint256 hashTx = GetHash();
-    for (unsigned int i = 0; i < vout.size(); i++) {
-        if (vout[i].color != color)
-            continue;
-        if (!pwallet->IsSpent(hashTx, i)) {
-            const CTxOut &txout = vout[i];
-            nCredit += pwallet->GetCredit(txout, ISMINE_SPENDABLE);
-            if (!MoneyRange(nCredit))
-                throw std::runtime_error("CWalletTx::GetAvailableCredit() : value out of range");
-        }
-    }
-
-    nAvailableCreditCached[color] = nCredit;
-    return nCredit;
+    CColorAmount mCredit = GetAvailableCredit(fUseCache);
+    CColorAmount::iterator it(mCredit.find(color));
+    return (it == mCredit.end()? 0: it->second);
 }
 
-void CWalletTx::GetAvailableCredit(colorAmount_t &color_amount) const
+CColorAmount CWalletTx::GetAvailableCredit(bool fUseCache) const
 {
     if (pwallet == 0)
-        return;
+        return CColorAmount();
 
     // Must wait until coinbase is safely deep enough in the chain before valuing it
     if (IsCoinBase() && GetBlocksToMaturity() > 0)
-        return;
+        return CColorAmount();
+
+    if (fUseCache && fAvailableCreditCached)
+        return mAvailableCreditCached;
+
+    CColorAmount mCredit;
     uint256 hashTx = GetHash();
-    for (unsigned int i = 0; i < vout.size(); i++) {
-        if (!pwallet->IsSpent(hashTx, i)) {
+    for (unsigned int i = 0; i < vout.size(); i++)
+    {
+        if (!pwallet->IsSpent(hashTx, i))
+        {
             const CTxOut &txout = vout[i];
-            if (color_amount.count(txout.color) == 0)
-                color_amount[txout.color] = 0;
-            color_amount[txout.color] += pwallet->GetCredit(txout, ISMINE_SPENDABLE);
-            if (!MoneyRange(color_amount[txout.color]))
+            mCredit += pwallet->GetCredit(txout, ISMINE_SPENDABLE);
+            if (!MoneyRange(mCredit[txout.mValue.Color()]))
                 throw std::runtime_error("CWalletTx::GetAvailableCredit() : value out of range");
         }
     }
-    return;
+
+    mAvailableCreditCached = mCredit;
+    fAvailableCreditCached = true;
+    return mCredit;
 }
 
-CAmount CWalletTx::GetImmatureWatchOnlyCredit(const bool& fUseCache) const
+CColorAmount CWalletTx::GetImmatureWatchOnlyCredit(const bool& fUseCache) const
 {
     if (IsCoinBase() && GetBlocksToMaturity() > 0 && IsInMainChain())
     {
         if (fUseCache && fImmatureWatchCreditCached)
-            return nImmatureWatchCreditCached;
-        nImmatureWatchCreditCached = pwallet->GetCredit(*this, ISMINE_WATCH_ONLY);
+            return mImmatureWatchCreditCached;
+        mImmatureWatchCreditCached = pwallet->GetCredit(*this, ISMINE_WATCH_ONLY);
         fImmatureWatchCreditCached = true;
-        return nImmatureWatchCreditCached;
+        return mImmatureWatchCreditCached;
     }
 
-    return 0;
+    return CColorAmount();
 }
 
-CAmount CWalletTx::GetAvailableWatchOnlyCredit(const bool& fUseCache) const
+CColorAmount CWalletTx::GetAvailableWatchOnlyCredit(const bool& fUseCache) const
 {
     if (pwallet == 0)
-        return 0;
+        return CColorAmount();
 
     // Must wait until coinbase is safely deep enough in the chain before valuing it
     if (IsCoinBase() && GetBlocksToMaturity() > 0)
-        return 0;
+        return CColorAmount();
 
     if (fUseCache && fAvailableWatchCreditCached)
-        return nAvailableWatchCreditCached;
+        return mAvailableWatchCreditCached;
 
-    CAmount nCredit = 0;
+    CColorAmount mCredit;
     for (unsigned int i = 0; i < vout.size(); i++)
     {
         if (!pwallet->IsSpent(GetHash(), i))
         {
             const CTxOut &txout = vout[i];
-            nCredit += pwallet->GetCredit(txout, ISMINE_WATCH_ONLY);
-            if (!MoneyRange(nCredit))
+            mCredit += pwallet->GetCredit(txout, ISMINE_WATCH_ONLY);
+            if (!MoneyRange(mCredit[txout.mValue.Color()]))
                 throw std::runtime_error("CWalletTx::GetAvailableCredit() : value out of range");
         }
     }
 
-    nAvailableWatchCreditCached = nCredit;
+    mAvailableWatchCreditCached = mCredit;
     fAvailableWatchCreditCached = true;
-    return nCredit;
+    return mCredit;
 }
 
-CAmount CWalletTx::GetChange() const
+CColorAmount CWalletTx::GetChange() const
 {
     if (fChangeCached)
-        return nChangeCached;
-    nChangeCached = pwallet->GetChange(*this);
+        return mChangeCached;
+    mChangeCached = pwallet->GetChange(*this);
     fChangeCached = true;
-    return nChangeCached;
+    return mChangeCached;
 }
 
 bool CWalletTx::IsTrusted() const
@@ -1406,27 +1374,6 @@ void CWallet::ResendWalletTransactions(int64_t nBestBlockTime)
  * @{
  */
 
-
-CAmount CWallet::GetColor0Balance() const
-{
-    CAmount nTotal = 0;
-    {
-        LOCK2(cs_main, cs_wallet);
-        for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it) {
-            const CWalletTx* pcoin = &(*it).second;
-            if (pcoin->IsTrusted() && (pcoin->type == MINT && pcoin->vout[0].color == DEFAULT_ADMIN_COLOR))
-                nTotal += pcoin->GetAvailableColorCredit();
-        }
-    }
-
-    return nTotal;
-}
-
-CAmount CWallet::GetVoteBalance() const
-{
-    return GetColor0Balance();
-}
-
 bool CWallet::GetLicensePubKey(const type_Color& color, CScript& scriptPubKey) const
 {
 
@@ -1434,7 +1381,7 @@ bool CWallet::GetLicensePubKey(const type_Color& color, CScript& scriptPubKey) c
         LOCK2(cs_main, cs_wallet);
         for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it) {
             const CWalletTx* pcoin = &(*it).second;
-            if (pcoin->IsTrusted() && (pcoin->type == LICENSE && pcoin->vout[0].color == color) && pcoin->GetAvailableColorCredit(color) == COIN && pcoin->GetBlocksToMaturity(pcoin->type) <= 0) {
+            if (pcoin->IsTrusted() && (pcoin->type == LICENSE && pcoin->vout[0].mValue.Color() == color) && pcoin->GetAvailableColorCredit(color) == COIN && pcoin->GetBlocksToMaturity(pcoin->type) <= 0) {
                 assert(pcoin->vout.size() > 0);
                 scriptPubKey = pcoin->vout[0].scriptPubKey;
                 string addr = GetTxOutputAddr(*pcoin, 0);
@@ -1457,8 +1404,9 @@ CAmount CWallet::GetSendLicenseBalance(const type_Color& color) const
         LOCK2(cs_main, cs_wallet);
         for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it) {
             const CWalletTx* pcoin = &(*it).second;
-            if (pcoin->IsTrusted() && ((pcoin->type == MINT && pcoin->vout[0].color == DEFAULT_ADMIN_COLOR) || (pcoin->type == LICENSE && pcoin->vout[0].color == color))) {
-                if (pcoin->vout[0].color == DEFAULT_ADMIN_COLOR)
+            type_Color colorCoin = pcoin->vout[0].mValue.Color();
+            if (pcoin->IsTrusted() && ((pcoin->type == MINT && colorCoin == DEFAULT_ADMIN_COLOR) || (pcoin->type == LICENSE && colorCoin == color))) {
+                if (colorCoin == DEFAULT_ADMIN_COLOR)
                     nTotal += pcoin->GetAvailableColorCredit();
                 else
                     nTotal += pcoin->GetAvailableColorCredit(color);
@@ -1469,104 +1417,31 @@ CAmount CWallet::GetSendLicenseBalance(const type_Color& color) const
     return nTotal;
 }
 
-void CWallet::GetBalance(colorAmount_t& color_amount) const
+CColorAmount CWallet::GetBalance() const
 {
-    color_amount.clear();
-
+    CColorAmount mTotal;
     {
         LOCK2(cs_main, cs_wallet);
         for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it) {
             const CWalletTx* pcoin = &(*it).second;
             if (pcoin->IsTrusted() && (pcoin->type == NORMAL || pcoin->type == MINT)) {
-                pcoin->GetAvailableCredit(color_amount);
+                mTotal += pcoin->GetAvailableCredit();
             }
         }
     }
-    return;
+
+    return mTotal;
 }
 
-
-void CWallet::GetAddressBalance(const string& strAddress, colorAmount_t& color_amount, int nMinDepth) const
+CAmount CWallet::GetColorBalanceFromFixedAddress(const string& strFromAddress, const type_Color& color, const int nMinDepth) const
 {
-    color_amount.clear();
-
-    {
-        LOCK2(cs_main, cs_wallet);
-        map<string, set<pair<uint256, unsigned int> > >::const_iterator itaddr = mapWalletAddr.find(strAddress);
-        if (itaddr == mapWalletAddr.end()) return;
-
-        for (set<pair<uint256, unsigned int> >::const_iterator it = itaddr->second.begin(); it != itaddr->second.end(); it++) {
-            const uint256& wtxid = it->first;
-            const unsigned int& index = it->second;
-            map<uint256, CWalletTx>::const_iterator txit = mapWallet.find(wtxid);
-            const CWalletTx *pcoin = &(txit->second);
-            // we want tx whose confirmation >= nMinDepth only.
-            if (pcoin->GetDepthInMainChain() < nMinDepth)
-                continue;
-
-            if (!pcoin->IsTrusted())
-                continue;
-
-            if (pcoin->IsCoinBase() && pcoin->GetBlocksToMaturity() > 0)
-                continue;
-
-            if (!(pcoin->type == NORMAL || pcoin->type == MINT))
-                continue;
-
-            // FIXME: what if index >= pcoin->vout.size() ?
-            isminetype mine = IsMine(pcoin->vout[index]);
-            if (!(IsSpent(wtxid, index)) && mine != ISMINE_NO && pcoin->vout[index].nValue > 0) {
-                colorAmount_t::iterator it_ca = color_amount.find(pcoin->vout[index].color);
-                if (it_ca == color_amount.end())
-                    color_amount.insert(make_pair(pcoin->vout[index].color, pcoin->vout[index].nValue));
-                else
-                    it_ca->second += pcoin->vout[index].nValue;
-            }
-        }
-    }
-    return;
+    CColorAmount balance = GetAddressBalance(strFromAddress, nMinDepth);
+    return balance[color];
 }
-
-
-CAmount CWallet::GetColorBalanceFromFixedAddress(const string& strFromAddress, const type_Color& color) const
-{
-    CAmount nTotal = 0;
-
-    {
-        LOCK2(cs_main, cs_wallet);
-
-        map<string, set<pair<uint256, unsigned int> > >::const_iterator itaddr = mapWalletAddr.find(strFromAddress);
-        if (itaddr == mapWalletAddr.end()) return nTotal;
-
-        for (set<pair<uint256, unsigned int> >::const_iterator it = itaddr->second.begin(); it != itaddr->second.end(); it++) {
-            const uint256& wtxid = it->first;
-            const unsigned int& index = it->second;
-            map<uint256, CWalletTx>::const_iterator txit = mapWallet.find(wtxid);
-            const CWalletTx *pcoin = &(txit->second);
-            if (!pcoin->IsTrusted())
-                continue;
-
-            if (pcoin->IsCoinBase() && pcoin->GetBlocksToMaturity() > 0)
-                continue;
-
-            if (!(pcoin->type == NORMAL || pcoin->type == MINT))
-                continue;
-
-            // FIXME: what if index >= pcoin->vout.size() ?
-            isminetype mine = IsMine(pcoin->vout[index]);
-            if (!(IsSpent(wtxid, index)) && mine != ISMINE_NO && pcoin->vout[index].nValue > 0)
-                nTotal += pcoin->vout[index].nValue;
-        }
-    }
-
-    return nTotal;
-}
-
 
 CAmount CWallet::GetColorBalance(const type_Color& color) const
 {
     CAmount nTotal = 0;
-
     {
         LOCK2(cs_main, cs_wallet);
         for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it) {
@@ -1578,21 +1453,19 @@ CAmount CWallet::GetColorBalance(const type_Color& color) const
     return nTotal;
 }
 
-void CWallet::GetUnconfirmedBalance(colorAmount_t& color_amount) const
+CColorAmount CWallet::GetUnconfirmedBalance() const
 {
-    color_amount.clear();
-
+    CColorAmount mTotal;
     {
         LOCK2(cs_main, cs_wallet);
-
         for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it) {
             const CWalletTx* pcoin = &(*it).second;
             if (!IsFinalTx(*pcoin, chainActive.Height(), GetAdjustedTime()) || (!pcoin->IsTrusted() && pcoin->GetDepthInMainChain() == 0)) {
-                pcoin->GetAvailableCredit(color_amount);
+                mTotal += pcoin->GetAvailableCredit();
             }
         }
     }
-    return;
+    return mTotal;
 }
 
 
@@ -1601,7 +1474,6 @@ CAmount CWallet::GetUnconfirmedColorBalance(const type_Color& color) const
     CAmount nTotal = 0;
     {
         LOCK2(cs_main, cs_wallet);
-
         for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it) {
             const CWalletTx* pcoin = &(*it).second;
             if (!IsFinalTx(*pcoin, chainActive.Height(), GetAdjustedTime()) || (!pcoin->IsTrusted() && pcoin->GetDepthInMainChain() == 0))
@@ -1611,65 +1483,59 @@ CAmount CWallet::GetUnconfirmedColorBalance(const type_Color& color) const
     return nTotal;
 }
 
-CAmount CWallet::GetImmatureBalance(const type_Color& color) const
+CColorAmount CWallet::GetImmatureBalance() const
 {
-    CAmount nTotal = 0;
+    CColorAmount mTotal;
     {
         LOCK2(cs_main, cs_wallet);
-
         for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it) {
             const CWalletTx* pcoin = &(*it).second;
-            if (color == pcoin->vout[0].color)
-                nTotal += pcoin->GetImmatureCredit();
+            mTotal += pcoin->GetImmatureCredit();
         }
     }
-    return nTotal;
+    return mTotal;
 }
 
-CAmount CWallet::GetWatchOnlyBalance(const type_Color& color) const
+CColorAmount CWallet::GetWatchOnlyBalance() const
 {
-    CAmount nTotal = 0;
+    CColorAmount mTotal;
     {
         LOCK2(cs_main, cs_wallet);
-
         for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it) {
             const CWalletTx* pcoin = &(*it).second;
-            if (pcoin->IsTrusted() && color == pcoin->vout[0].color)
-                nTotal += pcoin->GetAvailableWatchOnlyCredit(color);
+            if (pcoin->IsTrusted())
+                mTotal += pcoin->GetAvailableWatchOnlyCredit();
         }
     }
 
-    return nTotal;
+    return mTotal;
 }
 
-CAmount CWallet::GetUnconfirmedWatchOnlyBalance(const type_Color& color) const
+CColorAmount CWallet::GetUnconfirmedWatchOnlyBalance() const
 {
-    CAmount nTotal = 0;
+    CColorAmount mTotal;
     {
         LOCK2(cs_main, cs_wallet);
-
         for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it) {
             const CWalletTx* pcoin = &(*it).second;
-            if (color == pcoin->vout[0].color && (!IsFinalTx(*pcoin, chainActive.Height(), GetAdjustedTime()) || (!pcoin->IsTrusted() && pcoin->GetDepthInMainChain() == 0)))
-                nTotal += pcoin->GetAvailableWatchOnlyCredit();
+            if (!IsFinalTx(*pcoin, chainActive.Height(), GetAdjustedTime()) || (!pcoin->IsTrusted() && pcoin->GetDepthInMainChain() == 0))
+                mTotal += pcoin->GetAvailableWatchOnlyCredit();
         }
     }
-    return nTotal;
+    return mTotal;
 }
 
-CAmount CWallet::GetImmatureWatchOnlyBalance(const type_Color& color) const
+CColorAmount CWallet::GetImmatureWatchOnlyBalance() const
 {
-    CAmount nTotal = 0;
+    CColorAmount mTotal;
     {
         LOCK2(cs_main, cs_wallet);
-
         for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it) {
             const CWalletTx* pcoin = &(*it).second;
-            if (color == pcoin->vout[0].color)
-                nTotal += pcoin->GetImmatureWatchOnlyCredit();
+            mTotal += pcoin->GetImmatureWatchOnlyCredit();
         }
     }
-    return nTotal;
+    return mTotal;
 }
 
 void CWallet::AvailableCoinsForLicense(vector<COutput>& vCoins, const type_Color& send_color, bool fOnlyConfirmed, bool fIncludeZeroValue) const
@@ -1704,7 +1570,7 @@ void CWallet::AvailableCoinsForLicense(vector<COutput>& vCoins, const type_Color
 
             for (unsigned int i = 0; i < pcoin->vout.size(); i++) {
                 isminetype mine = IsMine(pcoin->vout[i]);
-                if (!(IsSpent(wtxid, i)) && mine != ISMINE_NO && !IsLockedCoin((*it).first, i) && (pcoin->vout[i].nValue == COIN || fIncludeZeroValue)) {
+                if (!(IsSpent(wtxid, i)) && mine != ISMINE_NO && !IsLockedCoin((*it).first, i) && (pcoin->vout[i].mValue.Value() == COIN || fIncludeZeroValue)) {
                     string addr = GetTxOutputAddr(*pcoin, i);
                     if (plicense->IsColorOwner(send_color, addr)) {
                         // send_color-license exists, and want to give his/her license to other address.
@@ -1719,92 +1585,65 @@ void CWallet::AvailableCoinsForLicense(vector<COutput>& vCoins, const type_Color
 
 // populate vCoins with vector of available COutputs.
 void CWallet::AvailableCoins(vector<COutput>& vCoins, const type_Color& color, bool fOnlyConfirmed, const CCoinControl *coinControl,
-                                bool fIncludeZeroValue, const std::string& strFromAddress) const
+                                bool fIncludeZeroValue, const string& strFromAddress) const
 {
     vCoins.clear();
     {
         LOCK2(cs_main, cs_wallet);
-        if (!strFromAddress.empty()) {
-            map<string, set<pair<uint256, unsigned int> > >::const_iterator itaddr = mapWalletAddr.find(strFromAddress);
-            if (itaddr == mapWalletAddr.end()) return;
-            for (set<pair<uint256, unsigned int> >::const_iterator it = itaddr->second.begin(); it != itaddr->second.end(); it++) {
-                const uint256& wtxid = it->first;
-                const unsigned int& index = it->second;
-                map<uint256, CWalletTx>::const_iterator txit = mapWallet.find(wtxid);
-                const CWalletTx *pcoin = &(txit->second);
+        for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it) {
+            const uint256& wtxid = it->first;
+            const CWalletTx* pcoin = &(*it).second;
 
-                if (!CheckFinalTx(*pcoin))
+            if (!CheckFinalTx(*pcoin))
+                continue;
+
+            if (fOnlyConfirmed && !pcoin->IsTrusted())
+                continue;
+
+            if (pcoin->IsCoinBase() && pcoin->GetBlocksToMaturity() > 0)
+                continue;
+
+
+            if (!(pcoin->type == NORMAL || pcoin->type == MINT))
+                continue;
+
+            int nDepth = pcoin->GetDepthInMainChain();
+            if (nDepth < 0)
+                continue;
+            for (unsigned int i = 0; i < pcoin->vout.size(); i++) {
+                if (pcoin->vout[i].mValue.Color() != color)
                     continue;
-
-                if (fOnlyConfirmed && !pcoin->IsTrusted())
+                if (!IsMine(pcoin->vout[i]))
                     continue;
-
-                if (pcoin->IsCoinBase() && pcoin->GetBlocksToMaturity() > 0)
-                    continue;
-
-                if (!(pcoin->type == NORMAL || pcoin->type == MINT))
-                    continue;
-
-                int nDepth = pcoin->GetDepthInMainChain();
-                if (nDepth < 0)
-                    continue;
-
-                if (pcoin->vout[index].color != color)
-                    continue;
-
-                // FIXME: what if index >= pcoin->vout.size() ?
-                isminetype mine = IsMine(pcoin->vout[index]);
-                if (!(IsSpent(wtxid, index)) && mine != ISMINE_NO && !IsLockedCoin((*txit).first, index) && pcoin->vout[index].nValue > 0 &&
-                        (!coinControl || !coinControl->HasSelected() || coinControl->IsSelected((*txit).first, index)))
-                    vCoins.push_back(COutput(pcoin, index, nDepth, (mine & ISMINE_SPENDABLE) != ISMINE_NO));
-            }
-        } else {
-            for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it) {
-                const uint256& wtxid = it->first;
-                const CWalletTx* pcoin = &(*it).second;
-
-                if (!CheckFinalTx(*pcoin))
-                    continue;
-
-                if (fOnlyConfirmed && !pcoin->IsTrusted())
-                    continue;
-
-                if (pcoin->IsCoinBase() && pcoin->GetBlocksToMaturity() > 0)
-                    continue;
-
-
-                if (!(pcoin->type == NORMAL || pcoin->type == MINT))
-                    continue;
-
-                int nDepth = pcoin->GetDepthInMainChain();
-                if (nDepth < 0)
-                    continue;
-                for (unsigned int i = 0; i < pcoin->vout.size(); i++) {
-                    if (pcoin->vout[i].color != color)
+                if (!(strFromAddress == "")) {
+                    CTxDestination addr;
+                    if (!ExtractDestination(pcoin->vout[i].scriptPubKey, addr))
                         continue;
-                    isminetype mine = IsMine(pcoin->vout[i]);
-                    if (!(IsSpent(wtxid, i)) && mine != ISMINE_NO && !IsLockedCoin((*it).first, i) && (pcoin->vout[i].nValue > 0 || fIncludeZeroValue) &&
-                            (!coinControl || !coinControl->HasSelected() || coinControl->IsSelected((*it).first, i)))
-                        vCoins.push_back(COutput(pcoin, i, nDepth, (mine & ISMINE_SPENDABLE) != ISMINE_NO));
+                    if (!(strFromAddress == CBitcoinAddress(addr).ToString()))
+                        continue;
                 }
+                isminetype mine = IsMine(pcoin->vout[i]);
+                if (!(IsSpent(wtxid, i)) && !IsLockedCoin((*it).first, i) && (pcoin->vout[i].mValue.Value() > 0 || fIncludeZeroValue) &&
+                        (!coinControl || !coinControl->HasSelected() || coinControl->IsSelected((*it).first, i)))
+                    vCoins.push_back(COutput(pcoin, i, nDepth, (mine & ISMINE_SPENDABLE) != ISMINE_NO));
             }
         }
     }
 }
 
-static void ApproximateBestSubset(vector<pair<CAmount, pair<const CWalletTx*, unsigned int> > > vValue, const CAmount& nTotalLower, const CAmount& nTargetValue,
-                                  vector<char>& vfBest, CAmount& nBest, int iterations = 1000)
+static void ApproximateBestSubset(vector<pair<CColorAmount, pair<const CWalletTx*, unsigned int> > > vValue, const CColorAmount& mTotalLower,
+                                  const CColorAmount& mTargetValue, vector<char>& vfBest, CColorAmount& mBest, int iterations = 1000)
 {
     vector<char> vfIncluded;
 
     vfBest.assign(vValue.size(), true);
-    nBest = nTotalLower;
+    mBest = mTotalLower;
 
     seed_insecure_rand();
 
-    for (int nRep = 0; nRep < iterations && nBest != nTargetValue; nRep++) {
+    for (int nRep = 0; nRep < iterations && mBest != mTargetValue; nRep++) {
         vfIncluded.assign(vValue.size(), false);
-        CAmount nTotal = 0;
+        CColorAmount mTotal = 0;
         bool fReachedTarget = false;
         for (int nPass = 0; nPass < 2 && !fReachedTarget; nPass++) {
             for (unsigned int i = 0; i < vValue.size(); i++) {
@@ -1815,15 +1654,15 @@ static void ApproximateBestSubset(vector<pair<CAmount, pair<const CWalletTx*, un
                 //because there may be some privacy improvement by making
                 //the selection random.
                 if (nPass == 0 ? insecure_rand() & 1 : !vfIncluded[i]) {
-                    nTotal += vValue[i].first;
+                    mTotal += vValue[i].first;
                     vfIncluded[i] = true;
-                    if (nTotal >= nTargetValue) {
+                    if (mTotal >= mTargetValue) {
                         fReachedTarget = true;
-                        if (nTotal < nBest) {
-                            nBest = nTotal;
+                        if (mTotal < mBest) {
+                            mBest = mTotal;
                             vfBest = vfIncluded;
                         }
-                        nTotal -= vValue[i].first;
+                        mTotal -= vValue[i].first;
                         vfIncluded[i] = false;
                     }
                 }
@@ -1832,18 +1671,18 @@ static void ApproximateBestSubset(vector<pair<CAmount, pair<const CWalletTx*, un
     }
 }
 
-bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, int nConfMine, int nConfTheirs, vector<COutput> vCoins,
-                                 set<pair<const CWalletTx*, unsigned int> >& setCoinsRet, CAmount& nValueRet) const
+bool CWallet::SelectCoinsMinConf(const CColorAmount& mTargetValue, int nConfMine, int nConfTheirs, vector<COutput> vCoins,
+                                 set<pair<const CWalletTx*, unsigned int> >& setCoinsRet, CColorAmount& mValueRet) const
 {
     setCoinsRet.clear();
-    nValueRet = 0;
+    mValueRet.clear();
 
     // List of values less than target
-    pair<CAmount, pair<const CWalletTx*, unsigned int> > coinLowestLarger;
-    coinLowestLarger.first = std::numeric_limits<CAmount>::max();
+    pair<CColorAmount, pair<const CWalletTx*, unsigned int> > coinLowestLarger;
+    coinLowestLarger.first = CColorAmount(mTargetValue.Color(), std::numeric_limits<CAmount>::max());
     coinLowestLarger.second.first = NULL;
-    vector<pair<CAmount, pair<const CWalletTx*, unsigned int> > > vValue;
-    CAmount nTotalLower = 0;
+    vector<pair<CColorAmount, pair<const CWalletTx*, unsigned int> > > vValue;
+    CColorAmount mTotalLower;
 
     random_shuffle(vCoins.begin(), vCoins.end(), GetRandInt);
 
@@ -1857,121 +1696,120 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, int nConfMine, int
             continue;
 
         int i = output.i;
-        CAmount n = pcoin->vout[i].nValue;
+        CColorAmount m = pcoin->vout[i].mValue;
 
-        pair<CAmount,pair<const CWalletTx*, unsigned int> > coin = make_pair(n,make_pair(pcoin, i));
+        pair<CColorAmount, pair<const CWalletTx*, unsigned int> > coin = make_pair(m, make_pair(pcoin, i));
 
-        if (n == nTargetValue) {
+        if (m == mTargetValue) {
             setCoinsRet.insert(coin.second);
-            nValueRet += coin.first;
+            mValueRet += coin.first;
             return true;
-        } else if (n < nTargetValue + CENT) {
+        } else if (m < mTargetValue + CENT) {
             vValue.push_back(coin);
-            nTotalLower += n;
-        } else if (n < coinLowestLarger.first) {
+            mTotalLower += m;
+        } else if (m < coinLowestLarger.first) {
             coinLowestLarger = coin;
         }
     }
 
-    if (nTotalLower == nTargetValue) {
+    if (mTotalLower == mTargetValue) {
         for (unsigned int i = 0; i < vValue.size(); ++i) {
             setCoinsRet.insert(vValue[i].second);
-            nValueRet += vValue[i].first;
+            mValueRet += vValue[i].first;
         }
         return true;
     }
 
-    if (nTotalLower < nTargetValue) {
+    if (mTotalLower < mTargetValue) {
         if (coinLowestLarger.second.first == NULL)
             return false;
         setCoinsRet.insert(coinLowestLarger.second);
-        nValueRet += coinLowestLarger.first;
+        mValueRet += coinLowestLarger.first;
         return true;
     }
 
     // Solve subset sum by stochastic approximation
     sort(vValue.rbegin(), vValue.rend(), CompareValueOnly());
     vector<char> vfBest;
-    CAmount nBest;
+    CColorAmount mBest;
 
-    ApproximateBestSubset(vValue, nTotalLower, nTargetValue, vfBest, nBest, 1000);
-    if (nBest != nTargetValue && nTotalLower >= nTargetValue + CENT)
-        ApproximateBestSubset(vValue, nTotalLower, nTargetValue + CENT, vfBest, nBest, 1000);
+    ApproximateBestSubset(vValue, mTotalLower, mTargetValue, vfBest, mBest, 1000);
+    if (mBest != mTargetValue && mTotalLower >= mTargetValue + CENT)
+        ApproximateBestSubset(vValue, mTotalLower, mTargetValue + CENT, vfBest, mBest, 1000);
 
     // If we have a bigger coin and (either the stochastic approximation didn't find a good solution,
     //                                   or the next bigger coin is closer), return the bigger coin
     if (coinLowestLarger.second.first &&
-        ((nBest != nTargetValue && nBest < nTargetValue + CENT) || coinLowestLarger.first <= nBest)) {
+        ((mBest != mTargetValue && mBest < mTargetValue + CENT) || coinLowestLarger.first <= mBest)) {
         setCoinsRet.insert(coinLowestLarger.second);
-        nValueRet += coinLowestLarger.first;
+        mValueRet += coinLowestLarger.first;
     } else {
         for (unsigned int i = 0; i < vValue.size(); i++)
             if (vfBest[i]) {
                 setCoinsRet.insert(vValue[i].second);
-                nValueRet += vValue[i].first;
+                mValueRet += vValue[i].first;
             }
 
         LogPrint("selectcoins", "SelectCoins() best subset: ");
         for (unsigned int i = 0; i < vValue.size(); i++)
             if (vfBest[i])
                 LogPrint("selectcoins", "%s ", FormatMoney(vValue[i].first));
-        LogPrint("selectcoins", "total %s\n", FormatMoney(nBest));
+        LogPrint("selectcoins", "total %s\n", FormatMoney(mBest));
     }
 
     return true;
 }
 
-bool CWallet::SelectCoinsForLicense(const CAmount& nTargetValue, const type_Color& send_color, set<std::pair<const CWalletTx*, unsigned int> >& setCoinsRet, CAmount& nValueRet) const
+bool CWallet::SelectCoinsForLicense(const CColorAmount& mTargetValue, set<std::pair<const CWalletTx*, unsigned int> >& setCoinsRet, CColorAmount& mValueRet) const
 {
     vector<COutput> vCoins;
-    AvailableCoinsForLicense(vCoins, send_color, true);
+    AvailableCoinsForLicense(vCoins, mTargetValue.Color(), true);
 
-    return (SelectCoinsMinConf(nTargetValue, 1, 6, vCoins, setCoinsRet, nValueRet) ||
-            SelectCoinsMinConf(nTargetValue, 1, 1, vCoins, setCoinsRet, nValueRet) ||
-            (bSpendZeroConfChange && SelectCoinsMinConf(nTargetValue, 0, 1, vCoins, setCoinsRet, nValueRet)));
+    return (SelectCoinsMinConf(mTargetValue, 1, 6, vCoins, setCoinsRet, mValueRet) ||
+            SelectCoinsMinConf(mTargetValue, 1, 1, vCoins, setCoinsRet, mValueRet) ||
+            (bSpendZeroConfChange && SelectCoinsMinConf(mTargetValue, 0, 1, vCoins, setCoinsRet, mValueRet)));
 }
 
-bool CWallet::SelectCoins(const CAmount& nTargetValue, const type_Color& color, set<pair<const CWalletTx*, unsigned int> >& setCoinsRet,
-                            CAmount& nValueRet, const CCoinControl* coinControl, const string& strFromAddress) const
+bool CWallet::SelectCoins(const CColorAmount& mTargetValue, set<pair<const CWalletTx*, unsigned int> >& setCoinsRet,
+                            CColorAmount& mValueRet, const CCoinControl* coinControl, const string& strFromAddress) const
 {
     vector<COutput> vCoins;
-    AvailableCoins(vCoins, color, true, coinControl, false, strFromAddress);
+    AvailableCoins(vCoins, mTargetValue.Color(), true, coinControl, false, strFromAddress);
 
     // coin control -> return all selected outputs (we want all selected to go into the transaction for sure)
     if (coinControl && coinControl->HasSelected()) {
         BOOST_FOREACH(const COutput& out, vCoins) {
             if (!out.fSpendable)
                 continue;
-            nValueRet += out.tx->vout[out.i].nValue;
+            mValueRet += out.tx->vout[out.i].mValue;
             setCoinsRet.insert(make_pair(out.tx, out.i));
         }
-        return (nValueRet >= nTargetValue);
+        return (mValueRet >= mTargetValue);
     }
 
-    return (SelectCoinsMinConf(nTargetValue, 1, 6, vCoins, setCoinsRet, nValueRet) ||
-            SelectCoinsMinConf(nTargetValue, 1, 1, vCoins, setCoinsRet, nValueRet) ||
-            (bSpendZeroConfChange && SelectCoinsMinConf(nTargetValue, 0, 1, vCoins, setCoinsRet, nValueRet)));
+    return (SelectCoinsMinConf(mTargetValue, 1, 6, vCoins, setCoinsRet, mValueRet) ||
+            SelectCoinsMinConf(mTargetValue, 1, 1, vCoins, setCoinsRet, mValueRet) ||
+            (bSpendZeroConfChange && SelectCoinsMinConf(mTargetValue, 0, 1, vCoins, setCoinsRet, mValueRet)));
 }
 
 // Create Special license Transaction
-bool CWallet::CreateLicenseTransaction(const std::vector<CRecipient>& vecSend, const type_Color& send_color, CWalletTx& wtxNew,
-                                        string& strFailReason, bool &fComplete)
+bool CWallet::CreateLicenseTransaction(const std::vector<CRecipient>& vecSend, CWalletTx& wtxNew, string& strFailReason, bool &fComplete)
 {
-    CAmount nValue = 0;
+    CColorAmount mValue;
 
-    if (send_color == DEFAULT_ADMIN_COLOR) {
-        strFailReason = "Color for License transaction must not be admin color";
-        return false;
-    }
     BOOST_FOREACH (const CRecipient& recipient, vecSend) {
-        if (nValue < 0 || recipient.nAmount < 0)
+        if (mValue.Color() == DEFAULT_ADMIN_COLOR) {
+            strFailReason = "Color for License transaction must not be admin color";
+            return false;
+        }
+        if (mValue.Value() < 0 || recipient.mAmount.Value() < 0)
         {
             strFailReason = _("Transaction amounts must be positive");
             return false;
         }
-        nValue += recipient.nAmount;
+        mValue += recipient.mAmount;
     }
-    if (vecSend.empty() || nValue < 0) {
+    if (vecSend.empty() || mValue.Value() < 0) {
         strFailReason = _("Transaction amounts must be positive");
         return false;
     }
@@ -1989,12 +1827,11 @@ bool CWallet::CreateLicenseTransaction(const std::vector<CRecipient>& vecSend, c
                 txNew.type = LICENSE;
 
                 // output value of special license transaction
-                int64_t nTotalValue = nValue;
                 double dPriority = 0;
 
                 // vouts to the payees
                 BOOST_FOREACH (const CRecipient& s, vecSend) {
-                    CTxOut txout(SEND_TYPE_AMOUNT, s.scriptPubKey, send_color);
+                    CTxOut txout(s.mAmount, s.scriptPubKey);
                     if (txout.IsDust(::minRelayTxFee)) {
                         strFailReason = "License transaction amount too small";
                         return false;
@@ -2004,23 +1841,23 @@ bool CWallet::CreateLicenseTransaction(const std::vector<CRecipient>& vecSend, c
 
                 // Choose coin to use
                 set<pair<const CWalletTx*,unsigned int> > setCoins;
-                int64_t nValueIn = 0;
-                if (!SelectCoinsForLicense(nTotalValue, send_color, setCoins, nValueIn)) {
+                CColorAmount mValueIn;
+                if (!SelectCoinsForLicense(mValue, setCoins, mValueIn)) {
                     strFailReason = "Insufficient License type funds";
                     return false;
                 }
 
                 BOOST_FOREACH(PAIRTYPE(const CWalletTx*, unsigned int) pcoin, setCoins) {
-                    int64_t nCredit = pcoin.first->vout[pcoin.second].nValue;
+                    CColorAmount mCredit = pcoin.first->vout[pcoin.second].mValue;
                     //The priority after the next block (depth+1) is used instead of the current,
                     //reflecting an assumption the user would accept a bit more delay for
                     //a chance at a free transaction.
-                    dPriority += (double)nCredit * (pcoin.first->GetDepthInMainChain()+1);
+                    dPriority += (double)mCredit.Value() * (pcoin.first->GetDepthInMainChain()+1);
                 }
 
-                int64_t nChange = nValueIn - nValue;
+                CColorAmount mChange = mValueIn - mValue;
 
-                if (nChange > 0) {
+                if (mChange.TotalValue() > 0) {
                     strFailReason = "input and output value of type License transaction must be equal";
                     return false;
                 }
@@ -2059,28 +1896,32 @@ bool CWallet::CreateLicenseTransaction(const std::vector<CRecipient>& vecSend, c
     return true;
 }
 
-bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, const type_Color& send_color, CWalletTx& wtxNew,
-                            CReserveKey& reservekey, CAmount& nFeeRet, int& nChangePosRet, string& strFailReason, const CCoinControl *coinControl, const string& strFromAddress, const string& feeFromAddress)
+bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wtxNew, CReserveKey& reservekey, CColorAmount& mFeeRet,
+                    int& nChangePosRet, string& strFailReason, const CCoinControl *coinControl, const string& strFromAddress,
+                    const string& strFeeAddress)
 {
-    CAmount nValue = 0;
+    CColorAmount mValue;
+    // Mechanism of splitting the fee into different txo should be reconsidered
+    /*
     unsigned int nSubtractFeeFromAmount = 0;
 
-    if (send_color == DEFAULT_ADMIN_COLOR) {
-        strFailReason = _("Color must not be zero");
-        return false;
-    }
     BOOST_FOREACH (const CRecipient& recipient, vecSend) {
-        if (nValue < 0 || recipient.nAmount < 0)
+        if (recipient.mAmount.Color() == DEFAULT_ADMIN_COLOR) {
+            strFailReason = _("Color must not be zero");
+            return false;
+        }
+        if (mValue.TotalValue() < 0 || recipient.mAmount.Value() < 0)
         {
             strFailReason = _("Transaction amounts must be positive");
             return false;
         }
-        nValue += recipient.nAmount;
+        mValue += recipient.mAmount;
 
         if (recipient.fSubtractFeeFromAmount)
             nSubtractFeeFromAmount++;
     }
-    if (vecSend.empty() || nValue < 0) {
+    */
+    if (vecSend.empty() || mValue.TotalValue() < 0) {
         strFailReason = _("Transaction amounts must be positive");
         return false;
     }
@@ -2114,7 +1955,7 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, const type_Co
     {
         LOCK2(cs_main, cs_wallet);
         {
-            nFeeRet = TxFee.GetFee();
+            mFeeRet = TxFee.GetFee();
             while (true) {
                 txNew.vin.clear();
                 txNew.vout.clear();
@@ -2123,17 +1964,44 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, const type_Co
                 wtxNew.fFromMe = true;
                 nChangePosRet = -1;
 
-                CAmount nTotalValue = nValue;
-                bool fSameColor = send_color == TxFee.GetColor();
-                if (fSameColor) {
-                    nTotalValue += nFeeRet;
+                CColorAmount mTotalValue = mValue;
+                bool fFeeTogether = mTotalValue.Color() == TxFee.GetFee().Color() && strFeeAddress == "";
+                if (fFeeTogether) {
+                    mTotalValue += mFeeRet;
                 }
 
                 double dPriority = 0;
                 // vouts to the payees
                 BOOST_FOREACH (const CRecipient& s, vecSend) {
-                    CTxOut txout(s.nAmount, s.scriptPubKey, send_color);
+                    CTxOut txout(s.mAmount, s.scriptPubKey);
+
+                    // Mechanism of splitting the fee into different txo should be reconsidered
+                    /*
+                    if (recipient.fSubtractFeeFromAmount)
+                    {
+                        txout.nValue -= nFeeRet / nSubtractFeeFromAmount; // Subtract fee equally from each selected recipient
+
+                        if (fFirst) // first receiver pays the remainder not divisible by output count
+                        {
+                            fFirst = false;
+                            txout.nValue -= nFeeRet % nSubtractFeeFromAmount;
+                        }
+                    }
+                    */
+
                     if (txout.IsDust(::minRelayTxFee)) {
+                        // Mechanism of splitting the fee into different txo should be reconsidered
+                        /*
+                        if (recipient.fSubtractFeeFromAmount && && nFeeRet > 0)
+                        {
+                            if (txout.nValue < 0)
+                                strFailReason = _("The transaction amount is too small to pay the fee");
+                            else
+                                strFailReason = _("The transaction amount is too small to send after the fee has been deducted")
+                        }
+                        else
+                            strFailReason = _("Transaction amount too small");
+                        */
                         strFailReason = _("Transaction amount too small");
                         return false;
                     }
@@ -2142,15 +2010,15 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, const type_Co
 
                 // Choose coins to use
                 set<pair<const CWalletTx*,unsigned int> > setCoins, setFeeCoins;
-                CAmount nValueIn = 0;
-                if (!SelectCoins(nTotalValue, send_color, setCoins, nValueIn, coinControl, strFromAddress))
+                CColorAmount mValueIn;
+                if (!SelectCoins(mTotalValue, setCoins, mValueIn, coinControl, strFromAddress))
                 {
                     strFailReason = _("You can not spend the token from this address.");
                     return false;
                 }
 
                 BOOST_FOREACH(PAIRTYPE(const CWalletTx*, unsigned int) pcoin, setCoins) {
-                    CAmount nCredit = pcoin.first->vout[pcoin.second].nValue;
+                    CColorAmount mCredit = pcoin.first->vout[pcoin.second].mValue;
                     //The coin age after the next block (depth+1) is used instead of the current,
                     //reflecting an assumption the user would accept a bit more delay for
                     //a chance at a free transaction.
@@ -2158,30 +2026,24 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, const type_Co
                     int age = pcoin.first->GetDepthInMainChain();
                     if (age != 0)
                         age += 1;
-                    dPriority += (double)nCredit * age;
+                    dPriority += (double)mCredit.TotalValue() * age;
                 }
 
-                CAmount nChange = nValueIn - nValue, nFeeChange = 0;
+                CColorAmount mChange = mValueIn - mTotalValue, mFeeChange;
 
                 CScript scriptFeeChange;
-                if (fSameColor) {
-                    nChange -= nFeeRet;
+                if (fFeeTogether) {
+                    mChange -= mFeeRet;
                 } else {
-                    string feeAddr;
-                    if (feeFromAddress == "")
-                        feeAddr = strFromAddress;
-                    else
-                        feeAddr = feeFromAddress;
-                    int64_t nFeeIn = 0;
-                    if (!SelectCoins(nFeeRet, TxFee.GetColor(), setFeeCoins, nFeeIn, coinControl, feeAddr)) {
+                    CColorAmount mFeeIn;
+                    if (!SelectCoins(mFeeRet, setFeeCoins, mFeeIn, coinControl, strFeeAddress)) {
                         strFailReason = _("Insufficient fee funds");
                         return false;
                     }
                     scriptFeeChange = setFeeCoins.begin()->first->vout[setFeeCoins.begin()->second].scriptPubKey;
-                    nFeeChange = nFeeIn - nFeeRet;
+                    mFeeChange = mFeeIn - mFeeRet;
                 }
-
-                if (nChange > 0 || nFeeChange > 0) {
+                if (mChange.TotalValue() > 0 || mFeeChange.TotalValue() > 0) {
                     // Fill a vout to ourself
                     // TODO: pass in scriptChange instead of reservekey so
                     // change transaction isn't always pay-to-bitcoin-address
@@ -2207,14 +2069,14 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, const type_Co
                         scriptChange = it.first->vout[it.second].scriptPubKey;
                     }
 
-                    if (nChange > 0) {
-                        CTxOut newTxOut(nChange, scriptChange, send_color);
+                    if (mChange.TotalValue() > 0) {
+                        CTxOut newTxOut(mChange, scriptChange);
                         // Never create dust outputs; if we would, just
                         // add the dust to the fee.
                         if (newTxOut.IsDust(::minRelayTxFee)) {
                             reservekey.ReturnKey();
-                            if (fSameColor) {
-                                nFeeRet += nChange;
+                            if (fFeeTogether) {
+                                mFeeRet += mChange;
                             } else {
                                 strFailReason = _("Dust Change");
                                 return false;
@@ -2224,12 +2086,12 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, const type_Co
                         }
                     }
 
-                    if (nFeeChange > 0) {
-                        CTxOut newTxOut(nFeeChange, scriptFeeChange, TxFee.GetColor());
+                    if (mFeeChange.Value() > 0) {
+                        CTxOut newTxOut(mFeeChange, scriptFeeChange);
                         // Never create dust outputs; if we would, just
                         // add the dust to the fee.
                         if (newTxOut.IsDust(::minRelayTxFee)) {
-                            nFeeRet += nFeeChange;
+                            mFeeRet += mFeeChange;
                             reservekey.ReturnKey();
                         } else {
                             txNew.vout.push_back(newTxOut);
@@ -2287,20 +2149,20 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, const type_Co
                         break;
                 }
 
-                CAmount nFeeNeeded = GetMinimumFee(nBytes, nTxConfirmTarget, mempool);
+                CColorAmount mFeeNeeded = GetMinimumFee(nBytes, nTxConfirmTarget, mempool);
 
                 // If we made it here and we aren't even able to meet the relay fee on the next pass, give up
                 // because we must be at the maximum allowed fee.
-                if (nFeeNeeded < ::minRelayTxFee.GetFee(nBytes)) {
+                if (mFeeNeeded < ::minRelayTxFee.GetFee(nBytes)) {
                     strFailReason = _("Transaction too large for fee policy");
                     return false;
                 }
 
-                if (nFeeRet >= nFeeNeeded)
+                if (mFeeRet >= mFeeNeeded)
                     break; // Done, enough fee included.
 
                 // Include more fee and try again.
-                nFeeRet = nFeeNeeded;
+                mFeeRet = mFeeNeeded;
                 continue;
             }
         }
@@ -2356,27 +2218,27 @@ bool CWallet::CommitTransaction(CWalletTx& wtxNew, CReserveKey& reservekey)
     return true;
 }
 
-CAmount CWallet::GetMinimumFee(unsigned int nTxBytes, unsigned int nConfirmTarget, const CTxMemPool& pool)
+CColorAmount CWallet::GetMinimumFee(unsigned int nTxBytes, unsigned int nConfirmTarget, const CTxMemPool& pool)
 {
     // payTxFee is user-set "I want to pay this much"
-    CAmount nFeeNeeded = payTxFee.GetFee(nTxBytes);
+    CColorAmount mFeeNeeded = payTxFee.GetFee(nTxBytes);
     // user selected total at least (default=true)
-    if (fPayAtLeastCustomFee && nFeeNeeded > 0 && nFeeNeeded < payTxFee.GetFeePerK())
-        nFeeNeeded = payTxFee.GetFeePerK();
+    if (fPayAtLeastCustomFee && mFeeNeeded.TotalValue() > 0 && mFeeNeeded < payTxFee.GetFeePerK())
+        mFeeNeeded = payTxFee.GetFeePerK();
     // User didn't set: use -txconfirmtarget to estimate...
-    if (nFeeNeeded == 0)
-        nFeeNeeded = pool.estimateFee(nConfirmTarget).GetFee(nTxBytes);
+    if (mFeeNeeded.TotalValue() == 0)
+        mFeeNeeded = pool.estimateFee(nConfirmTarget).GetFee(nTxBytes);
     // ... unless we don't have enough mempool data, in which case fall
     // back to a hard-coded fee
-    if (nFeeNeeded == 0)
-        nFeeNeeded = minTxFee.GetFee(nTxBytes);
+    if (mFeeNeeded.TotalValue() == 0)
+        mFeeNeeded = minTxFee.GetFee(nTxBytes);
     // prevent user from paying a non-sense fee (like 1 satoshi): 0 < fee < minRelayFee
-    if (nFeeNeeded < ::minRelayTxFee.GetFee(nTxBytes))
-        nFeeNeeded = ::minRelayTxFee.GetFee(nTxBytes);
+    if (mFeeNeeded < ::minRelayTxFee.GetFee(nTxBytes))
+        mFeeNeeded = ::minRelayTxFee.GetFee(nTxBytes);
     // But always obey the maximum
-    if (nFeeNeeded > maxTxFee)
-        nFeeNeeded = maxTxFee;
-    return nFeeNeeded;
+    if (mFeeNeeded > maxTxFee)
+        mFeeNeeded = maxTxFee;
+    return mFeeNeeded;
 }
 
 
@@ -2738,14 +2600,24 @@ int64_t CWallet::GetOldestKeyPoolTime()
     return keypool.nTime;
 }
 
-map<CTxDestination, colorAmount_t > CWallet::GetAddressBalances()
+CColorAmount CWallet::GetAddressBalance(const string& strAddress, const int nMinDepth) const
 {
-    map<CTxDestination, colorAmount_t > balances;
+    map<CTxDestination, CColorAmount> balances = GetAddressBalances();
+    CTxDestination address = CBitcoinAddress(strAddress).Get();
+    return balances[address];
+}
+
+map<CTxDestination, CColorAmount> CWallet::GetAddressBalances(const int nMinDepth) const
+{
+    map<CTxDestination, CColorAmount> balances;
 
     {
         LOCK(cs_wallet);
         BOOST_FOREACH(PAIRTYPE(uint256, CWalletTx) walletEntry, mapWallet) {
             CWalletTx *pcoin = &walletEntry.second;
+
+            if (pcoin->GetDepthInMainChain() < nMinDepth)
+                continue;
 
             if (!CheckFinalTx(*pcoin) || !pcoin->IsTrusted())
                 continue;
@@ -2766,10 +2638,8 @@ map<CTxDestination, colorAmount_t > CWallet::GetAddressBalances()
                     continue;
                 if (!ExtractDestination(pcoin->vout[i].scriptPubKey, addr))
                     continue;
-                CAmount n = IsSpent(walletEntry.first, i) ? 0 : pcoin->vout[i].nValue;
-                if (!balances.count(addr) || !balances[addr].count(pcoin->vout[i].color))
-                    balances[addr][pcoin->vout[i].color] = 0;
-                balances[addr][pcoin->vout[i].color] += n;
+                CColorAmount m = IsSpent(walletEntry.first, i) ? CColorAmount() : pcoin->vout[i].mValue;
+                balances[addr] += m;
             }
         }
     }
@@ -3095,10 +2965,12 @@ bool CWallet::GetDestData(const CTxDestination &dest, const string &key, string 
     return false;
 }
 
-string CWallet::MintMoney(const CAmount& nValue, const type_Color& color, CWalletTx& wtxNew, int type)
+string CWallet::MintMoney(const CColorAmount& mValue, CWalletTx& wtxNew, int type)
 {
+    type_Color color = mValue.Color();
+    CAmount value = mValue.Value();
     // check if total value of this color meet MAX_MONEY
-    if (nValue > MAX_MONEY / COIN) {
+    if (value > MAX_MONEY / COIN) {
         LogPrintf("%s: Mint Value > MaxCoin", __func__);
         return "mint Value > MaxCoin";
     }
@@ -3112,21 +2984,21 @@ string CWallet::MintMoney(const CAmount& nValue, const type_Color& color, CWalle
             LOCK(mempool.cs);
             BOOST_FOREACH(const PAIRTYPE(uint256, CTxMemPoolEntry)& entry, mempool.mapTx) {
                 const CTransaction& m_tx = entry.second.GetTx();
-                if ((m_tx.type != MINT) || (m_tx.vout[0].color != color)) continue;
-                num_of_coins_in_pool += m_tx.vout[0].nValue;
+                if ((m_tx.type != MINT) || (m_tx.vout[0].mValue.Color() != color)) continue;
+                num_of_coins_in_pool += m_tx.vout[0].mValue.Value();
             }
         }
         int64_t colorMax = plicense->GetUpperLimit(color);
-        if (colorMax != 0 && nValue * COIN > (colorMax * COIN - num_of_coins - num_of_coins_in_pool)) {
-            LogPrintf("%s: %lld(nValue) + %lld(total existing coin) > %lld(Color Limit)"
-                    , __func__, nValue, (num_of_coins + num_of_coins_in_pool) / COIN, MAX_MONEY / COIN);
+        if (colorMax != 0 && value * COIN > (colorMax * COIN - num_of_coins - num_of_coins_in_pool)) {
+            LogPrintf("%s: %s(mValue) + %lld(total existing coin) > %lld(Color Limit)"
+                    , __func__, FormatMoney(mValue), (num_of_coins + num_of_coins_in_pool) / COIN, MAX_MONEY / COIN);
             return "color limit will be exceeded";
-        } else if (nValue * COIN > (MAX_MONEY - num_of_coins - num_of_coins_in_pool)) {
-            LogPrintf("%s: %lld(nValue) + %lld(total existing coin) > %lld(MaxCoin)"
-                    , __func__, nValue, (num_of_coins + num_of_coins_in_pool) / COIN, MAX_MONEY / COIN);
+        } else if (value * COIN > (MAX_MONEY - num_of_coins - num_of_coins_in_pool)) {
+            LogPrintf("%s: %s(mValue) + %lld(total existing coin) > %lld(MaxCoin)"
+                    , __func__, FormatMoney(mValue), (num_of_coins + num_of_coins_in_pool) / COIN, MAX_MONEY / COIN);
             return "coins of this color may overflow";
         }
-        if (nValue == 0) {
+        if (value == 0) {
             LogPrintf("%s: minting color %u with value 0", __func__, color);
             return "mint value should not be 0";
         }
@@ -3136,7 +3008,7 @@ string CWallet::MintMoney(const CAmount& nValue, const type_Color& color, CWalle
     CReserveKey reservekey(this);
     string addr;
     if (color == DEFAULT_ADMIN_COLOR) {
-        if (nValue != 1)
+        if (value != 1)
             return "value of admin color must be 1";
         if (type != LICENSE && type != MINER)
             return "Admin color must be mint for license or miner";
@@ -3147,12 +3019,11 @@ string CWallet::MintMoney(const CAmount& nValue, const type_Color& color, CWalle
         scriptPubKey = GetScriptForDestination(address.Get());
         txNew.vout.resize(1);
         txNew.vout[0].scriptPubKey = scriptPubKey;
-        txNew.vout[0].nValue = COIN;
-        txNew.vout[0].color = 0;
+        txNew.vout[0].mValue.init(0, COIN);
     } else if (!GetLicensePubKey(color, scriptPubKey)) {
         return "you don't have this license";
     } else {
-        CTxOut newTxOut(nValue * COIN, scriptPubKey, color);
+        CTxOut newTxOut(mValue * COIN, scriptPubKey);
         txNew.vout.push_back(newTxOut);
     }
 
@@ -3197,14 +3068,14 @@ bool CWallet::CreateLicense(const CTxDestination &address, const type_Color colo
 
     CMutableTransaction txNew;
     txNew.type = LICENSE;
-    CTxOut txout(COIN, scriptPubKey, color);
+    CTxOut txout(CColorAmount(color, COIN), scriptPubKey);
     txNew.vout.push_back(txout);
 
     // op_return
     CScript scriptMessage;
     vector<unsigned char> msg(info.begin(), info.end());
     scriptMessage = CScript() << OP_RETURN << msg;
-    CTxOut op_return(0, scriptMessage, color);
+    CTxOut op_return(CColorAmount(color, 0), scriptMessage);
     txNew.vout.push_back(op_return);
 
     CTxOutMap mapTxOut;
@@ -3253,7 +3124,7 @@ bool CWallet::SetAlliance(CScript& script, CWalletTx& wtxNew)
 
     CMutableTransaction txNew;
     txNew.type = VOTE;
-    CTxOut txout(COIN, script, DEFAULT_ADMIN_COLOR);
+    CTxOut txout(CColorAmount(DEFAULT_ADMIN_COLOR, COIN), script);
     txNew.vout.push_back(txout);
 
     vector<string> key;
@@ -3301,7 +3172,7 @@ bool CWallet::SetMiner(const CTxDestination& address, CWalletTx& wtxNew, int typ
 
     CMutableTransaction txNew;
     txNew.type = type;
-    CTxOut txout(COIN, scriptPubKey, DEFAULT_ADMIN_COLOR);
+    CTxOut txout(CColorAmount(DEFAULT_ADMIN_COLOR, COIN), scriptPubKey);
     txNew.vout.push_back(txout);
 
     CTxOutMap mapTxOut;

@@ -15,7 +15,11 @@
 #include "amount.h"
 
 std::string FormatMoney(const CAmount& n, bool fPlus=false);
+std::string FormatMoney(const CColorAmount& m, bool fPlus=false);
+std::string FormatColor(const type_Color& n);
 bool ParseMoney(const std::string& str, CAmount& nRet);
 bool ParseMoney(const char* pszIn, CAmount& nRet);
+bool ParseMoney(const std::string& str, CColorAmount& mRet);
+bool ParseColor(const char* pszIn, type_Color& nRet);
 
 #endif // BITCOIN_UTILMONEYSTR_H

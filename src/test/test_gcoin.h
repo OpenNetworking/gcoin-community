@@ -160,11 +160,6 @@ public:
 
     DBErrors LoadWallet(bool& fFirstRunRet);
 
-    int64_t GetColor0Balance() const
-    {
-        return color_admin_amount_;
-    }
-
     int64_t GetSendLicenseBalance(const type_Color& color) const
     {
         return license_amount_;
