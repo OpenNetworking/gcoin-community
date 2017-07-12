@@ -682,7 +682,7 @@ public:
     bool AddKeyPool(CPubKey& key);
     bool EraseKeyPool();
     void ViewKeyPool(std::vector<CPubKey>& keys);
-    int64_t SearchKeyPool(const CBitcoinAddress& address) const;
+    bool SearchKeyPool(int64_t& nIndex, const CBitcoinAddress& address) const;
     void ReserveKeyFromKeyPool(int64_t& nIndex, CKeyPool& keypool);
     void ReserveKeyFromKeyPool(int64_t& nIndex, CKeyPool& keypool, const CBitcoinAddress& address);
     void KeepKey(int64_t nIndex);

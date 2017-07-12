@@ -676,6 +676,8 @@ void GenerateGcoins(bool fGenerate, CWallet* pwallet, int nThreads)
         minerThreads = NULL;
     }
 
+    SoftSetBoolArg("-gen", fGenerate);
+
     if (nThreads == 0 || !fGenerate)
         return;
 

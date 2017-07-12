@@ -2620,7 +2620,7 @@ void CWallet::ViewKeyPool(std::vector<CPubKey>& keys)
     }
 }
 
-int64_t CWallet::SearchKeyPool(const CBitcoinAddress& address) const
+bool CWallet::SearchKeyPool(int64_t& nIndex, const CBitcoinAddress& address) const
 {
     LOCK(cs_wallet);
     CWalletDB walletdb(strWalletFile);
@@ -2629,10 +2629,12 @@ int64_t CWallet::SearchKeyPool(const CBitcoinAddress& address) const
         CKeyPool keypool;
         if (!walletdb.ReadPool(*it, keypool))
             throw runtime_error(_(__func__) + "() : read failed");
-        if (address == CBitcoinAddress(keypool.vchPubKey.GetID()))
-            return (*it);
+        if (address == CBitcoinAddress(keypool.vchPubKey.GetID())) {
+            nIndex = *it;
+            return true;
+        }
     }
-    return -1;
+    return false;
 }
 
 void CWallet::ReserveKeyFromKeyPool(int64_t& nIndex, CKeyPool& keypool)
@@ -2666,12 +2668,13 @@ void CWallet::ReserveKeyFromKeyPool(int64_t& nIndex, CKeyPool& keypool, const CB
     {
         LOCK(cs_wallet);
 
-        // Get the oldest key
+        // Return if the key pool is empty
         if (setKeyPool.empty())
             return;
 
         CWalletDB walletdb(strWalletFile);
-        nIndex = SearchKeyPool(address);
+        if (!SearchKeyPool(nIndex, address))
+            return;
         setKeyPool.erase(nIndex);
         if (!walletdb.ReadPool(nIndex, keypool))
             throw runtime_error(_(__func__) + "() : read failed");

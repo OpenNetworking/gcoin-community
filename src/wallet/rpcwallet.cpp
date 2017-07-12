@@ -152,13 +152,16 @@ Value assignfixedaddress(const Array& params, bool fHelp)
             "\nArguments:\n"
             "1. \"address\"     (string, required) The address to be assigned as the default address.\n"
             "\nResult:\n"
-            "\"address\"    (string) The default gcoin address\n"
+            "{\n"
+            "  \"address\" : true      (boolean) If the default gcoin address is mining\n"
+            "}\n"
             "\nExamples:\n"
             + HelpExampleCli("assignfixedaddress", "")
             + HelpExampleCli("assignfixedaddress", "address")
             + HelpExampleRpc("assignfixedaddress", "address")
         );
 
+    Object result;
     std::string str = params[0].get_str();
     CPubKey newDefaultKey;
     CKeyID keyID;
@@ -168,6 +171,9 @@ Value assignfixedaddress(const Array& params, bool fHelp)
     } else {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Gcoin address or key");
     }
+
+    if (keyID == pwalletMain->vchDefaultKey.GetID())
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Same default address");
 
     if (!pwalletMain->GetKeyFromPool(newDefaultKey, address)) {
         if (!pwalletMain->GetPubKey(keyID, newDefaultKey)) {
@@ -184,15 +190,12 @@ Value assignfixedaddress(const Array& params, bool fHelp)
             throw JSONRPCError(RPC_WALLET_ERROR, "Cannot write default address");
     }
 
-    if (mapArgs["-gen"] == "1") {
-        GenerateGcoins(true, pwalletMain, atoi(mapArgs["-genproclimit"]));
-        if (mapArgs["-gen"] == "1")
-            str += " mining continues";
-        else
-            str += " mining stops";
-    }
+    if (GetBoolArg("-gen", false))
+        GenerateGcoins(true, pwalletMain, GetArg("-genproclimit", 1));
 
-    return str;
+    result.push_back(Pair(str, GetBoolArg("-gen", false)));
+
+    return result;
 }
 
 // Get a specific amount of new address.
