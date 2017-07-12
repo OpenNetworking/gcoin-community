@@ -13,7 +13,7 @@ can be found in the contrib/init folder.
 1. Service User
 ---------------------------------
 
-All three startup configurations assume the existence of a "bitcoin" user
+All three startup configurations assume the existence of a "gcoin" user
 and group.  They must be created before attempting to use these scripts.
 
 2. Configuration
@@ -35,10 +35,10 @@ generate one from the shell yourself like this:
 
 bash -c 'tr -dc a-zA-Z0-9 < /dev/urandom | head -c32 && echo'
 
-Once you have a password in hand, set rpcpassword= in /etc/bitcoin/bitcoin.conf
+Once you have a password in hand, set rpcpassword= in /etc/gcoin/gcoin.conf
 
 For an example configuration file that describes the configuration settings, 
-see contrib/debian/examples/bitcoin.conf.
+see contrib/debian/examples/gcoin.conf.
 
 3. Paths
 ---------------------------------
@@ -46,7 +46,7 @@ see contrib/debian/examples/bitcoin.conf.
 All three configurations assume several paths that might need to be adjusted.
 
 Binary:              /usr/bin/gcoind
-Configuration file:  /etc/bitcoin/bitcoin.conf
+Configuration file:  /etc/gcoin/gcoin.conf
 Data directory:      /var/lib/gcoind
 PID file:            /var/run/gcoind/gcoind.pid (OpenRC and Upstart)
                      /var/lib/gcoind/gcoind.pid (systemd)

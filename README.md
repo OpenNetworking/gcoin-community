@@ -1,17 +1,17 @@
-Copyright (c) 2014-2016 GCOIN Foundation
+Copyright (c) 2014-2016 Gcoin Foundation
 
-What is GCOIN?
+What is Gcoin?
 ----------------
 
-GCOIN blockchain protocol is an open-source software.
-GCOIN is built for next-generation digital infrastructure, the distributed ledger.
+Gcoin blockchain protocol is an open-source software.
+Gcoin is built for next-generation digital infrastructure, the distributed ledger.
 
 For more information, see http://g-coin.org, or go to the [help forum](https://groups.google.com/forum/#!forum/gcoins).
 
 License
 -------
 
-GCOIN is released under the terms of the Apache License 2.0. See [COPYING](COPYING) for more
+Gcoin is released under the terms of the Apache License 2.0. See [COPYING](COPYING) for more
 information or see http://www.apache.org/licenses/LICENSE-2.0.html.
 
 Development process
@@ -20,13 +20,12 @@ Development process
 Developers work in their own trees, then submit pull requests when they think
 their feature or bug fix is ready.
 
-If it is a simple/trivial/non-controversial change, then one of the GCOIN
+If it is a simple/trivial/non-controversial change, then one of the Gcoin
 development team members simply pulls it.
 
 The patch will be accepted if there is broad consensus that it is a good thing.
-Developers should expect to rework and resubmit patches if the code doesn't
-match the project's coding conventions (see [doc/coding.md](doc/coding.md)) or are
-controversial.
+Developers should expect to rework and resubmit patches if the code is
+controversial. See [Developer-notes](doc/developer-notes.md) for more information.
 
 
 Testing
@@ -73,24 +72,15 @@ on all categories (and give you a very large debug.log file).
 The Qt code routes qDebug() output to debug.log under category "qt": run with -debug=qt
 to see it.
 
-**testnet and regtest modes**
-
-Run with the -testnet option to run with "play bitcoins" on the test network, if you
-are testing multi-machine code that needs to operate across the internet.
-
-If you are testing something that can run on one machine, run with the -regtest option.
-In regression test mode blocks can be created on-demand; see qa/rpc-tests/ for tests
-that run in -regest mode.
-
 **DEBUG_LOCKORDER**
 
-GCOIN Core is a multithreaded application, and deadlocks or other multithreading bugs
+Gcoin Core is a multithreaded application, and deadlocks or other multithreading bugs
 can be very difficult to track down. Compiling with -DDEBUG_LOCKORDER (configure
 CXXFLAGS="-DDEBUG_LOCKORDER -g") inserts run-time checks to keep track of what locks
 are held, and adds warning to the debug.log file if inconsistencies are detected.
 
 Help Forums
 ---------------------------
-Post questions and get advice from other people using GCOIN.
+Post questions and get advice from other people using Gcoin.
 
 https://groups.google.com/forum/#!forum/gcoins
